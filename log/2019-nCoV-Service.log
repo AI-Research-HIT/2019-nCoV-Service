@@ -1,0 +1,5 @@
+2020/02/09 20:23:36 jwt.go:24 github.com/AI-Research-HIT/2019-nCoV-Service/auth.InitJwt [Fatal] - open 2019-nCoV-Service-oauth.rsa.pub: no such file or directory
+2020/02/09 20:24:30 main.go:42 main.main [Info] - Server started
+2020/02/09 20:25:01 main.go:46 main.main [Info] - main$qC: interrupt
+2020/02/09 20:25:01 main.go:50 main.main [Info] - Server stopping
+2020/02/09 20:25:04 main.go:54 main.main [Info] - Server stopped

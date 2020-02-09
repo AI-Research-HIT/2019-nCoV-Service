@@ -1,0 +1,51 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "ErzCQycbfhW+7d19dJSTslJlPwY=",
+			"path": "github.com/adam-hanna/jwt-auth/jwt",
+			"revision": "3f596e66e003161dc0a4e3cd0a1e26b1e1cf6dfe",
+			"revisionTime": "2018-07-23T17:35:37Z"
+		},
+		{
+			"checksumSHA1": "GISMaeDDq24amTxv7WDueU54qa4=",
+			"origin": "github.com/adam-hanna/jwt-auth/jwt/vendor/github.com/adam-hanna/randomstrings",
+			"path": "github.com/adam-hanna/randomstrings",
+			"revision": "3f596e66e003161dc0a4e3cd0a1e26b1e1cf6dfe",
+			"revisionTime": "2018-07-23T17:35:37Z"
+		},
+		{
+			"checksumSHA1": "ilxtmghXZ7UhH+8HqzQvDNFohik=",
+			"origin": "github.com/adam-hanna/jwt-auth/jwt/vendor/github.com/dgrijalva/jwt-go",
+			"path": "github.com/dgrijalva/jwt-go",
+			"revision": "3f596e66e003161dc0a4e3cd0a1e26b1e1cf6dfe",
+			"revisionTime": "2018-07-23T17:35:37Z"
+		},
+		{
+			"checksumSHA1": "7Po7BQEK889o0Zt+PFBn3CIUF3s=",
+			"path": "github.com/ender-wan/ewlog",
+			"revision": "029031a43de7cdd27ec3c8b364500a8598a4f8a8",
+			"revisionTime": "2017-06-16T09:27:51Z"
+		},
+		{
+			"checksumSHA1": "+IHQ1q1pMzEkujIHQAzhNFg7GvM=",
+			"path": "github.com/ender-wan/goutility/pidf",
+			"revision": "0aec76164ca49a7c78e3c98598d95124c212cbce",
+			"revisionTime": "2017-07-26T07:55:05Z"
+		},
+		{
+			"checksumSHA1": "oHwfghigjTz8Xs+ssxwdl/atb44=",
+			"path": "github.com/gorilla/context",
+			"revision": "51ce91d2eaddeca0ef29a71d766bb3634dadf729",
+			"revisionTime": "2018-10-12T15:35:48Z"
+		},
+		{
+			"checksumSHA1": "YuYKzn2jczaM6DQcFDmukvAHUX4=",
+			"path": "github.com/gorilla/mux",
+			"revision": "b57cb1605fd11ba2ecfa7f68992b4b9cc791934d",
+			"revisionTime": "2018-04-16T20:45:19Z"
+		}
+	],
+	"rootPath": "github.com/AI-Research-HIT/2019-nCoV-Service"
+}
