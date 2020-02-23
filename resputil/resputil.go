@@ -51,6 +51,24 @@ func WriteSuccessWithData(w http.ResponseWriter, data interface{}) {
 	}
 }
 
+func WriteSuccessWithJsonData(w http.ResponseWriter, data string) {
+	w.Header().Set("Content-Type", "application/json")
+	resp := ResponseData{
+		Response: Response{
+			Code: 0,
+			Msg:  "success",
+		},
+		Data: data,
+	}
+
+	body, err := json.Marshal(resp)
+	if err != nil {
+		http.Error(w, "error", http.StatusInternalServerError)
+	} else {
+		w.Write(body)
+	}
+}
+
 func WriteSuccess(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	response := Response{

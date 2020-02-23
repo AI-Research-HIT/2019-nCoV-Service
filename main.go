@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AI-Research-HIT/2019-nCoV-Service/db"
+
 	"github.com/AI-Research-HIT/2019-nCoV-Service/config"
 	"github.com/AI-Research-HIT/2019-nCoV-Service/service"
 	"github.com/ender-wan/ewlog"
@@ -36,7 +38,7 @@ func main() {
 	signal.Notify(qC, syscall.SIGINT, syscall.SIGTERM)
 
 	ctx, cancelFn := context.WithCancel(context.Background())
-
+	db.ConnectToMongo()
 	service.StartService(ctx)
 
 	ewlog.Info("Server started")

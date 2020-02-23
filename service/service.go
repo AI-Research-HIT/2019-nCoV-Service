@@ -20,7 +20,15 @@ func StartService(ctx context.Context) {
 	r := mux.NewRouter()
 	//AttachProfiler(r)
 
-	r.HandleFunc("/api/model-cal", ModelCalculateHanlder)
+	r.HandleFunc("/login", LoginHandler).Methods("POST")
+
+	apiRouter := r.PathPrefix("/api").Subrouter()
+	apiRouter.HandleFunc("/model-cal", ModelCalculateHandler).Methods("POST")
+	apiRouter.HandleFunc("/mdata", MDataHandler).Methods("GET")
+	apiRouter.HandleFunc("/latest", LatestDataHandler).Methods("GET")
+	apiRouter.HandleFunc("/mlist", MlistHandler).Methods("GET")
+	apiRouter.HandleFunc("/chinamobile-data", ChinaMobileDataHandler).Methods("GET")
+	apiRouter.HandleFunc("/baidu-incity", BaiduInCityHandler).Methods("GET")
 
 	r.Use(mw.CorsMw)
 	//r.Use(mw.JwtAuthMw)
