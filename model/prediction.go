@@ -6,19 +6,26 @@ import (
 
 	"github.com/AI-Research-HIT/2019-nCoV-Service/db"
 	"github.com/AI-Research-HIT/2019-nCoV-Service/protodef"
+	"github.com/AI-Research-HIT/2019-nCoV-Service/util"
 	"github.com/ender-wan/ewlog"
 )
 
 func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse {
-	province := protodef.ProvinceData{}
-	val, ok := TempPredictData[request.City]
 	var err error
+
+	province := protodef.ProvinceData{}
+	val, ok := TempPredictData[request.Province]
+	startDate, err := time.Parse(util.DateLayout, "2020-01-21")
+	if err != nil {
+		ewlog.Error(err)
+		return protodef.PredictionResponse{}
+	}
 	if !ok {
 		val = PredictTemp{
 			MList:     []float64{12.0, 5.0, 1.0},
 			Infection: []int{},
 		}
-		province, err = db.FindProvinceData(request.City)
+		province, err = db.CalculateDataByDay(request.Province, request.City)
 		if err != nil {
 			ewlog.Error(err)
 			return protodef.PredictionResponse{}
@@ -27,8 +34,13 @@ func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse 
 		for _, d := range province.Detail {
 			val.Infection = append(val.Infection, d.TotalInfection)
 		}
-
+		startDate, err = time.Parse(util.DateLayout, province.Detail[0].Date)
+		if err != nil {
+			ewlog.Error(err)
+			return protodef.PredictionResponse{}
+		}
 	}
+
 	// 游离在外感染人群比例
 	var alpha0 = 0.8
 	// 感染者接触人数
@@ -39,8 +51,6 @@ func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse 
 	for _, data := range val.Infection {
 		cityData = append(cityData, float64(data))
 	}
-
-	startDate := time.Date(2020, 01, 21, 0, 0, 0, 0, time.Local)
 
 	var Te = 4      //潜伏天数
 	var beta = 0.05 //病毒本身感染力
@@ -54,14 +64,11 @@ func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse 
 	}
 
 	var gamma = 0.05 // 死亡率
-	if request.City == "haerbin" {
+	if request.Province == "haerbin" {
 		gamma = 0.003
 	}
 
-	var y = 0.10 //治愈率
-	if request.City == "haerbin" {
-		gamma = 0.003
-	}
+	var y = 0.15 //治愈率
 
 	seir := SEIR(cityData, request.PredictDay, k, m_list, alpha0, Te, beta, gamma, y)
 	I_list := []float64{}
@@ -88,19 +95,20 @@ func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse 
 			NewInfection:   newInfection,
 			TotalInfection: totalInfection,
 			PredictNew:     int(deltainfection[i]),
-			PredictTotal:   int(I_list[i] + seir[2][i] + seir[3][i]),
-			PredictRecover: int(seir[2][i]),
-			PredictDeath:   int(seir[3][i]),
+			PredictTotal:   int(seir[2][i] + seir[3][i] + seir[4][i]),
+			PredictRecover: int(seir[3][i]),
+			PredictDeath:   int(seir[4][i]),
 			Date:           startDate.AddDate(0, 0, i).Format("2006-01-02"),
-			MVal:           seir[4][i],
-			AlphaVal:       seir[5][i],
+			MVal:           seir[5][i],
+			AlphaVal:       seir[6][i],
 		}
 		actives = append(actives, active)
 	}
 
 	resp := protodef.PredictionResponse{
-		City:    request.City,
-		Actives: actives,
+		City:     request.City,
+		Province: request.Province,
+		Actives:  actives,
 	}
 
 	return resp
@@ -108,7 +116,7 @@ func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse 
 
 // alpha随时间递减
 func alpha(x float64, alpha0 float64) float64 {
-	return alpha0 - 0.005*x
+	return alpha0 - 0.01*x
 }
 
 // 定义m值（接触人数*疾病传染率）
@@ -120,6 +128,32 @@ func m(x int, m_list []float64) float64 {
 	} else {
 		return m_list[2]
 	}
+}
+
+func r(x int) float64 {
+	r_list := []float64{0.00000, 0.02, 0.04, 0.15}
+	if x < 7 {
+		return r_list[0]
+	}
+	if x >= 7 && x < 20 {
+		return r_list[1]
+	}
+
+	return r_list[2]
+}
+
+func d(x int) float64 {
+	d_list := []float64{0, 0.01, 0.015, 0.00, 0.00}
+	if x < 7 {
+		return d_list[0]
+	}
+	if x >= 7 && x < 12 {
+		return d_list[1]
+	}
+	if x >= 12 && x < 13 {
+		return d_list[2]
+	}
+	return d_list[3]
 }
 
 // 传播模型
@@ -137,11 +171,17 @@ func SEIR(A []float64, TT int, k float64, m_list []float64, alpha0 float64, Te i
 	var E = []float64{}
 	var I = []float64{}
 	var R = []float64{}
+	var Q = []float64{0.0}
 	var D = []float64{}
-	E = append(E, A[Te+1]-A[0])                     //潜伏者
+	if Te <= 4 {
+		E = append(E, A[5]-(4.0-float64(Te))*(A[5]-A[4])-A[0])
+	} else {
+		E = append(E, A[5]+(float64(Te)-4.0)*(A[6]-A[5])-A[0]) //潜伏者
+	}
 	I = append(I, (1.0/(1.0-alpha0))*float64(A[0])) //传染者
 	R = append(R, 0)                                //恢复人数
 	D = append(D, 0)
+	Q[0] = A[0]
 
 	alphaList := []float64{}
 	mList := []float64{}
@@ -155,14 +195,16 @@ func SEIR(A []float64, TT int, k float64, m_list []float64, alpha0 float64, Te i
 
 		e := E[idx] + alpha*m*I[idx]*beta - a*E[idx] + k*m*beta*E[idx]
 		E = append(E, e)
-		i := I[idx] + a*E[idx] - y*I[idx] - gamma*I[idx]
+		i := alpha*I[idx] + a*E[idx]
 		I = append(I, i)
-		r := R[idx] + y*I[idx]
+		q := Q[idx] + (1.0-alpha)*I[idx] - r(idx)*Q[idx] - d(idx)*Q[idx]
+		Q = append(Q, q)
+		r := R[idx] + r(idx)*Q[idx]
 		R = append(R, r)
-		d := D[idx] + gamma*I[idx]
+		d := D[idx] + d(idx)*Q[idx]
 		D = append(D, d)
 	}
-	var SEIR_list = [][]float64{E, I, R, D, mList, alphaList}
+	var SEIR_list = [][]float64{E, I, Q, R, D, mList, alphaList}
 	return SEIR_list
 }
 
@@ -210,7 +252,7 @@ func delta_Infection(seir [][]float64) []float64 {
 	deltainfection := []float64{}
 	predict_infection := []float64{}
 	for i, _ := range seir[1] {
-		predict_infection = append(predict_infection, seir[1][i]+seir[2][i]+seir[3][i])
+		predict_infection = append(predict_infection, seir[2][i]+seir[3][i]+seir[4][i])
 	}
 
 	for i := 1; i < len(seir[1]); i++ {

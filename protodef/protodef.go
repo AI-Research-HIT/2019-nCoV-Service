@@ -1,7 +1,8 @@
 package protodef
 
 type PredictionRequest struct {
-	City       string  `json:"city"`
+	City       int64   `json:"city"`
+	Province   string  `json:"province"`
 	PredictDay int     `json:"predictDay"`
 	Te         int     `json:"te"`
 	Beta       float64 `json:"beta"`
@@ -37,8 +38,9 @@ type Active struct {
 }
 
 type PredictionResponse struct {
-	City    string   `json:"city`
-	Actives []Active `json:"actives"`
+	City     int64    `json:"city`
+	Province string   `json:"province"`
+	Actives  []Active `json:"actives"`
 }
 
 type UserResponse struct {
@@ -52,6 +54,7 @@ type UserResponse struct {
 type ProvinceData struct {
 	PID          string       `json:"pid" bson:"pid"`
 	ProvinceName string       `json:"provinceName" bson:"provinceName"`
+	CityName     string       `json:"cityName" bson:"cityName"`
 	Detail       []DetailData `json:"detail" bson:"detail"`
 }
 
@@ -74,4 +77,9 @@ type LatestData struct {
 	NowHeavy       int `json:"nowHeavy"`
 	NowSusp        int `json:"nowSusp"`
 	TotalInfection int `json:"totalInfection"`
+}
+
+type AllProviceDataRequest struct {
+	ProvinceName string `json:"provinceName"`
+	CityName     int64  `json:"cityName"`
 }

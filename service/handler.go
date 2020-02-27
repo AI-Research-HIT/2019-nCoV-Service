@@ -6,6 +6,10 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/AI-Research-HIT/2019-nCoV-Service/cli"
+
+	"github.com/AI-Research-HIT/2019-nCoV-Service/db"
+
 	"github.com/AI-Research-HIT/2019-nCoV-Service/protodef"
 	"github.com/AI-Research-HIT/2019-nCoV-Service/util"
 	"github.com/ender-wan/ewlog"
@@ -26,6 +30,7 @@ func ModelCalculateHandler(w http.ResponseWriter, r *http.Request) {
 
 	request := &protodef.PredictionRequest{}
 	err = json.Unmarshal(data, request)
+	ewlog.Info(request)
 
 	resp := model.Prediction(*request)
 
@@ -37,13 +42,39 @@ func MDataHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func LatestDataHandler(w http.ResponseWriter, r *http.Request) {
+	now := util.TodayStartTime()
+	rs, err := db.FindLatestOverallData(now.Unix())
+	if err != nil {
+		ewlog.Error(err)
+
+		all, err := cli.GetOverAll(1)
+		if err != nil {
+			ewlog.Error(err)
+			resputil.WriteFailed(w, 400, "latest data not found")
+			return
+		}
+		if len(all) > 0 {
+			err = db.InsertLatestOverallData(all[0])
+			if err != nil {
+				ewlog.Error(err)
+				resputil.WriteFailed(w, 400, "latest data not found")
+				return
+			}
+			rs = all[0]
+		} else {
+			ewlog.Errorf("overall api call failed")
+			resputil.WriteFailed(w, 400, "latest data not found")
+			return
+		}
+
+	}
 	data := protodef.LatestData{
-		NowInfection:   54645,
-		TotalCure:      18687,
-		TotalDeath:     2239,
-		NowHeavy:       11633,
-		NowSusp:        5206,
-		TotalInfection: 75571,
+		NowInfection:   rs.CurrentConfirmedCount,
+		TotalCure:      rs.CuredCount,
+		TotalDeath:     rs.DeadCount,
+		NowHeavy:       rs.SeriousCount,
+		NowSusp:        rs.SuspectedCount,
+		TotalInfection: rs.ConfirmedCount,
 	}
 	resputil.WriteSuccessWithData(w, data)
 }
@@ -107,4 +138,26 @@ func BaiduInCityHandler(w http.ResponseWriter, r *http.Request) {
 	sort.Sort(util.BaiduCitySlice(data))
 
 	resputil.WriteSuccessWithData(w, data)
+}
+
+func AllProvinceDataHandler(w http.ResponseWriter, r *http.Request) {
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 2, err.Error())
+		return
+	}
+
+	defer r.Body.Close()
+
+	request := &protodef.AllProviceDataRequest{}
+	err = json.Unmarshal(data, request)
+
+	resp, err := db.CalculateDataByDay(request.ProvinceName, request.CityName)
+	if err != nil {
+		resputil.WriteFailed(w, 404, request.ProvinceName+" data not found")
+		return
+	}
+
+	resputil.WriteSuccessWithData(w, resp)
 }

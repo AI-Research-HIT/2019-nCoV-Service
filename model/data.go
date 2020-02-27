@@ -29,7 +29,7 @@ var TempMData = []MData{
 
 var TempPredictData = map[string]PredictTemp{
 	"shanghai": PredictTemp{
-		Infection: []int{4, 14, 22, 36, 41, 68, 80, 91, 111, 114, 139, 168, 191, 212, 228, 253, 274, 297, 315, 326, 337, 342, 352, 366},
+		Infection: []int{2, 6, 9, 16, 20, 33, 40, 53, 66, 96, 112, 135, 169, 182, 203, 219, 243, 257, 277, 286, 293, 299, 303, 311},
 		MList:     []float64{12.0, 5.0, 1.0},
 	},
 	"beijing": PredictTemp{
@@ -69,11 +69,11 @@ var TempPredictData = map[string]PredictTemp{
 		MList:     []float64{16.0, 9.0, 1.0},
 	},
 	"tianjing": PredictTemp{
-		Infection: []int{1, 1, 2, 3, 4, 8, 17, 25, 46, 67, 83, 89, 103, 121, 134, 149, 162, 168, 179, 189, 195, 204, 210},
+		Infection: []int{1, 4, 4, 8, 10, 14, 22, 24, 27, 31, 32, 41, 48, 60, 67, 69, 78, 81, 88, 90, 95, 105, 112, 113},
 		MList:     []float64{10.0, 4.0, 3.0},
 	},
 	"xian": PredictTemp{
-		Infection: []int{1, 1, 2, 3, 4, 8, 17, 25, 46, 67, 83, 89, 103, 121, 134, 149, 162, 168, 179, 189, 195, 204, 210},
+		Infection: []int{2, 2, 4, 8, 12, 15, 18, 22, 32, 39, 47, 55, 60, 70, 74, 80, 88, 96, 98, 104, 110, 114},
 		MList:     []float64{10.0, 3.0, 2.0},
 	},
 	"changsha": PredictTemp{
