@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -10,35 +11,49 @@ import (
 	"github.com/ender-wan/ewlog"
 )
 
-func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse {
+func Prediction(request protodef.PredictionRequest) (protodef.PredictionResponse, error) {
 	var err error
-
 	province := protodef.ProvinceData{}
-	val, ok := TempPredictData[request.Province]
 	startDate, err := time.Parse(util.DateLayout, "2020-01-21")
 	if err != nil {
 		ewlog.Error(err)
-		return protodef.PredictionResponse{}
+		return protodef.PredictionResponse{}, err
 	}
-	if !ok {
-		val = PredictTemp{
-			MList:     []float64{12.0, 5.0, 1.0},
-			Infection: []int{},
-		}
-		province, err = db.CalculateDataByDay(request.Province, request.City)
-		if err != nil {
-			ewlog.Error(err)
-			return protodef.PredictionResponse{}
-		}
+	val := PredictTemp{
+		MList:     map[int]float64{0: 12.0, 5: 5.0, 10: 1.0},
+		Infection: []int{},
+	}
 
-		for _, d := range province.Detail {
-			val.Infection = append(val.Infection, d.TotalInfection)
+	if request.Template == 1 {
+		key := fmt.Sprintf("%s-%d", request.Province, request.City)
+		v, ok := TempPredictData[key]
+		if ok {
+			val.MList = v.MList
 		}
-		startDate, err = time.Parse(util.DateLayout, province.Detail[0].Date)
-		if err != nil {
-			ewlog.Error(err)
-			return protodef.PredictionResponse{}
-		}
+	}
+
+	if len(request.Mlist) > 0 {
+		val.MList = request.Mlist
+	}
+	province, err = db.CalculateDataByDay(request.Province, request.City)
+	if err != nil {
+		ewlog.Error(err)
+		return protodef.PredictionResponse{}, err
+	}
+
+	if len(province.Detail) < 6 {
+		err = fmt.Errorf("%+v history to less: %d", request, len(province.Detail))
+		ewlog.Error(err)
+		return protodef.PredictionResponse{}, err
+	}
+
+	for _, d := range province.Detail {
+		val.Infection = append(val.Infection, d.TotalInfection)
+	}
+	startDate, err = time.Parse(util.DateLayout, province.Detail[0].Date)
+	if err != nil {
+		ewlog.Error(err)
+		return protodef.PredictionResponse{}, err
 	}
 
 	// 游离在外感染人群比例
@@ -63,14 +78,7 @@ func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse 
 		beta = request.Beta
 	}
 
-	var gamma = 0.05 // 死亡率
-	if request.Province == "haerbin" {
-		gamma = 0.003
-	}
-
-	var y = 0.15 //治愈率
-
-	seir := SEIR(cityData, request.PredictDay, k, m_list, alpha0, Te, beta, gamma, y)
+	seir := SEIR(cityData, request.PredictDay, k, alpha0, Te, beta, m_list)
 	I_list := []float64{}
 	for i := 0; i < request.PredictDay+1; i++ {
 		I_list = append(I_list, (1.0-alpha(float64(i), alpha0))*seir[1][i])
@@ -91,6 +99,7 @@ func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse 
 				newInfection = val.Infection[i] - val.Infection[i-1]
 			}
 		}
+
 		active := protodef.Active{
 			NewInfection:   newInfection,
 			TotalInfection: totalInfection,
@@ -111,7 +120,7 @@ func Prediction(request protodef.PredictionRequest) protodef.PredictionResponse 
 		Actives:  actives,
 	}
 
-	return resp
+	return resp, err
 }
 
 // alpha随时间递减
@@ -119,8 +128,7 @@ func alpha(x float64, alpha0 float64) float64 {
 	return alpha0 - 0.01*x
 }
 
-// 定义m值（接触人数*疾病传染率）
-func m(x int, m_list []float64) float64 {
+func mOrg(x int, m_list []float64) float64 {
 	if x < 5 {
 		return m_list[0]
 	} else if x >= 5 && x < 10 {
@@ -166,7 +174,7 @@ func d(x int) float64 {
 // gamma 死亡率
 // y 治愈率
 // beta 病毒本身感染力
-func SEIR(A []float64, TT int, k float64, m_list []float64, alpha0 float64, Te int, beta, gamma, y float64) [][]float64 {
+func SEIR(A []float64, TT int, k float64, alpha0 float64, Te int, beta float64, mlist map[int]float64) [][]float64 {
 	var a = 1.0 / float64(Te)
 	var E = []float64{}
 	var I = []float64{}
@@ -184,14 +192,18 @@ func SEIR(A []float64, TT int, k float64, m_list []float64, alpha0 float64, Te i
 	Q[0] = A[0]
 
 	alphaList := []float64{}
-	mList := []float64{}
+	mHistory := []float64{}
+	m := 10.0
 	for idx := 0; idx < TT; idx++ {
 		fidx := float64(idx)
 		alpha := alpha(fidx, alpha0)
 		alphaList = append(alphaList, alpha)
-		m := m(idx, m_list)
+		mval, ok := mlist[idx]
+		if ok {
+			m = mval
+		}
 		//m = float64(rand.Intn(10))
-		mList = append(mList, m)
+		mHistory = append(mHistory, m)
 
 		e := E[idx] + alpha*m*I[idx]*beta - a*E[idx] + k*m*beta*E[idx]
 		E = append(E, e)
@@ -204,7 +216,7 @@ func SEIR(A []float64, TT int, k float64, m_list []float64, alpha0 float64, Te i
 		d := D[idx] + d(idx)*Q[idx]
 		D = append(D, d)
 	}
-	var SEIR_list = [][]float64{E, I, Q, R, D, mList, alphaList}
+	var SEIR_list = [][]float64{E, I, Q, R, D, mHistory, alphaList}
 	return SEIR_list
 }
 

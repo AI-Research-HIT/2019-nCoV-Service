@@ -1,11 +1,13 @@
 package protodef
 
 type PredictionRequest struct {
-	City       int64   `json:"city"`
-	Province   string  `json:"province"`
-	PredictDay int     `json:"predictDay"`
-	Te         int     `json:"te"`
-	Beta       float64 `json:"beta"`
+	City       int64           `json:"city"`
+	Province   string          `json:"province"`
+	Template   int             `json:"template"`
+	PredictDay int             `json:"predictDay"`
+	Te         int             `json:"te"`
+	Beta       float64         `json:"beta"`
+	Mlist      map[int]float64 `json:"mlist"`
 }
 
 type VirusResponse struct {
@@ -82,4 +84,33 @@ type LatestData struct {
 type AllProviceDataRequest struct {
 	ProvinceName string `json:"provinceName"`
 	CityName     int64  `json:"cityName"`
+}
+
+type MonteCarloSimulationRequest struct {
+	City         int64           `json:"city"`
+	Province     string          `json:"province"`
+	PredictDay   int             `json:"predictDay"`
+	Beta         float64         `json:"beta"`
+	Mlist        map[int]float64 `json:"mlist"`
+	TreamentList map[int]int     `json:"treamentList"`
+}
+
+type MonteCarloSimulationResponse struct {
+	InfectedCount    int    `json:"infectedCount"`
+	InfectedNew      int    `json:"infectedNew"`
+	ConfirmCount     int    `json:"confirmCount"`
+	ConfirmNew       int    `json:"confirmNew"`
+	RealConfirmCount int    `json:"realConfirmCount"`
+	RealConfirmNew   int    `json:"realConfirmNew"`
+	DeadCount        int    `json:"deadCount"`
+	DeadNew          int    `json:"deadNew"`
+	RealDeadCount    int    `json:"realDeadCount"`
+	RealDeadNew      int    `json:"realDeadNew"`
+	CureCount        int    `json:"cureCount"`
+	CureNew          int    `json:"cureNew"`
+	RealCureCount    int    `json:"realCureCount"`
+	RealCureNew      int    `json:"realCureNew"`
+	Date             string `json:"date"`
+	InfectingCount   int    `json:"infectingCount"`
+	TreamentingCount int    `json:"treamentingCount"`
 }

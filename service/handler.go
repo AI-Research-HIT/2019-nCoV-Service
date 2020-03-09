@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/AI-Research-HIT/2019-nCoV-Service/cli"
 
@@ -22,7 +23,7 @@ func ModelCalculateHandler(w http.ResponseWriter, r *http.Request) {
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		ewlog.Error(err)
-		resputil.WriteFailed(w, 2, err.Error())
+		resputil.WriteFailed(w, 100, err.Error())
 		return
 	}
 
@@ -30,9 +31,18 @@ func ModelCalculateHandler(w http.ResponseWriter, r *http.Request) {
 
 	request := &protodef.PredictionRequest{}
 	err = json.Unmarshal(data, request)
-	ewlog.Info(request)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 101, "无效的请求数据")
+		return
+	}
+	ewlog.Infof("%+v", request)
 
-	resp := model.Prediction(*request)
+	resp, err := model.Prediction(*request)
+	if err != nil {
+		resputil.WriteFailed(w, 102, "该区域数据太少，无法计算")
+		return
+	}
 
 	resputil.WriteSuccessWithData(w, resp)
 }
@@ -160,4 +170,62 @@ func AllProvinceDataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resputil.WriteSuccessWithData(w, resp)
+}
+
+func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 100, err.Error())
+		return
+	}
+
+	defer r.Body.Close()
+
+	request := &protodef.MonteCarloSimulationRequest{}
+	err = json.Unmarshal(data, request)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 101, "无效的请求数据")
+		return
+	}
+	ewlog.Infof("%+v", request)
+
+	province, err := db.CalculateDataByDay(request.Province, request.City)
+
+	if len(province.Detail) == 0 {
+		ewlog.Warn("请求的城市没有初始数据")
+		resputil.WriteFailed(w, 101, "请求的城市没有初始数据")
+		return
+	}
+
+	DayOne := province.Detail[0]
+	startDate, err := time.Parse(util.DateLayout, DayOne.Date)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 103, "internal error")
+		return
+	}
+
+	result, err := model.Simulate(DayOne.TotalInfection, request.PredictDay, request.Mlist, request.Beta, request.TreamentList, startDate)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 102, err.Error())
+		return
+	}
+
+	for i, _ := range result {
+		if i == len(province.Detail) {
+			break
+		}
+
+		result[i].RealConfirmCount = province.Detail[i].TotalInfection
+		result[i].RealConfirmNew = province.Detail[i].NewInfection
+		result[i].RealCureCount = province.Detail[i].TotalCure
+		result[i].RealCureNew = province.Detail[i].NewCure
+		result[i].RealDeadCount = province.Detail[i].TotalDeath
+		result[i].RealDeadNew = province.Detail[i].NewDeath
+	}
+
+	resputil.WriteSuccessWithData(w, result)
 }

@@ -8,7 +8,7 @@ var ProvinceMap = map[string]string{
 
 type PredictTemp struct {
 	Infection []int
-	MList     []float64
+	MList     map[int]float64
 }
 
 type MData struct {
@@ -28,69 +28,69 @@ var TempMData = []MData{
 }
 
 var TempPredictData = map[string]PredictTemp{
-	"shanghai": PredictTemp{
+	"上海市-0": PredictTemp{
 		Infection: []int{2, 6, 9, 16, 20, 33, 40, 53, 66, 96, 112, 135, 169, 182, 203, 219, 243, 257, 277, 286, 293, 299, 303, 311},
-		MList:     []float64{12.0, 5.0, 1.0},
+		MList:     map[int]float64{0: 10, 5: 2, 10: 1},
 	},
-	"beijing": PredictTemp{
+	"北京市-0": PredictTemp{
 		Infection: []int{4, 14, 22, 36, 41, 68, 80, 91, 111, 114, 139, 168, 191, 212, 228, 253, 274, 297, 315, 326, 337, 342, 352, 366},
-		MList:     []float64{9.0, 2.0, 2.0},
+		MList:     map[int]float64{0: 7, 5: 3, 9: 2},
 	},
-	"chengdu": PredictTemp{
+	"四川省-510100": PredictTemp{
 		Infection: []int{1, 2, 4, 7, 16, 22, 33, 37, 46, 59, 69, 72, 73, 77, 87, 92, 97, 102, 109, 120, 123, 124, 125, 131},
-		MList:     []float64{10.0, 3.0, 1.0},
+		MList:     map[int]float64{0: 9, 5: 3, 10: 1},
 	},
-	"fuzhou": PredictTemp{
+	"福建省-350100": PredictTemp{
 		Infection: []int{1, 3, 5, 6, 13, 18, 24, 24, 30, 32, 39, 44, 47, 53, 55, 56, 57, 59, 62, 63, 63, 64, 64},
-		MList:     []float64{8.0, 1.0, 1.0},
+		MList:     map[int]float64{0: 8, 5: 4, 10: 1},
 	},
-	"guangzhou": PredictTemp{
+	"广东省-440100": PredictTemp{
 		Infection: []int{2, 5, 7, 14, 17, 41, 51, 63, 94, 112, 150, 179, 200, 224, 249, 270, 285, 301, 307, 314, 317, 323, 327},
-		MList:     []float64{12.0, 4.0, 1.0},
+		MList:     map[int]float64{0: 17, 7: 3, 14: 1},
 	},
-	"haerbin": PredictTemp{
+	"黑龙江省-230100": PredictTemp{
 		Infection: []int{1, 6, 8, 8, 10, 11, 13, 18, 25, 34, 45, 63, 73, 82, 94, 100, 114, 128, 146, 150, 159},
-		MList:     []float64{15.0, 5.0, 2.0},
+		MList:     map[int]float64{0: 11, 9: 7, 15: 6, 17: 1},
 	},
-	"haikou": PredictTemp{
+	"海南省-460100": PredictTemp{
 		Infection: []int{1, 3, 3, 3, 6, 7, 9, 9, 9, 11, 11, 13, 14, 16, 16, 21, 23, 23, 28, 29, 29, 29},
-		MList:     []float64{5.0, 4.0, 2.0},
+		MList:     map[int]float64{0: 8, 7: 6, 10: 2},
 	},
-	"hangzhou": PredictTemp{
+	"浙江省-330100": PredictTemp{
 		Infection: []int{1, 1, 6, 6, 12, 27, 27, 32, 51, 69, 85, 98, 110, 118, 132, 141, 151, 155, 156, 157, 159, 162, 162, 165},
-		MList:     []float64{11.0, 4.0, 0.3},
+		MList:     map[int]float64{0: 10, 5: 6, 9: 1},
 	},
-	"hefei": PredictTemp{
+	"安徽省-340100": PredictTemp{
 		Infection: []int{1, 5, 6, 10, 13, 13, 16, 29, 39, 50, 59, 59, 75, 81, 93, 104, 115, 128, 136, 147, 150, 157, 161},
-		MList:     []float64{12.0, 6.0, 2.0},
+		MList:     map[int]float64{0: 12, 5: 6, 16: 1},
 	},
-	"nanchang": PredictTemp{
+	"江西省-360100": PredictTemp{
 		Infection: []int{1, 1, 2, 3, 4, 8, 17, 25, 46, 67, 83, 89, 103, 121, 134, 149, 162, 168, 179, 189, 195, 204, 210},
-		MList:     []float64{16.0, 9.0, 1.0},
+		MList:     map[int]float64{0: 35, 5: 9, 8: 1},
 	},
-	"tianjing": PredictTemp{
+	"天津市-0": PredictTemp{
 		Infection: []int{1, 4, 4, 8, 10, 14, 22, 24, 27, 31, 32, 41, 48, 60, 67, 69, 78, 81, 88, 90, 95, 105, 112, 113},
-		MList:     []float64{10.0, 4.0, 3.0},
+		MList:     map[int]float64{0: 10, 3: 4, 16: 1},
 	},
-	"xian": PredictTemp{
+	"陕西省-610100": PredictTemp{
 		Infection: []int{2, 2, 4, 8, 12, 15, 18, 22, 32, 39, 47, 55, 60, 70, 74, 80, 88, 96, 98, 104, 110, 114},
-		MList:     []float64{10.0, 3.0, 2.0},
+		MList:     map[int]float64{0: 10, 6: 4, 15: 1},
 	},
-	"changsha": PredictTemp{
+	"湖南省-430100": PredictTemp{
 		Infection: []int{1, 4, 8, 8, 18, 22, 24, 46, 57, 68, 86, 112, 125, 148, 164, 179, 190, 196, 205, 213, 219, 223, 228},
-		MList:     []float64{12.0, 6.0, 2.0},
+		MList:     map[int]float64{0: 16, 5: 6, 11: 1},
 	},
-	"zhengzhou": PredictTemp{
+	"河南省-410100": PredictTemp{
 		Infection: []int{1, 2, 2, 3, 6, 20, 29, 37, 40, 46, 50, 56, 65, 72, 85, 92, 102, 112, 120, 126, 130, 132, 137, 141},
-		MList:     []float64{10.0, 4.0, 2.0},
+		MList:     map[int]float64{0: 10, 5: 3, 13: 1},
 	},
-	"chongqing": PredictTemp{
+	"重庆市-0": PredictTemp{
 		Infection: []int{5, 5, 9, 27, 57, 75, 110, 132, 147, 182, 211, 247, 275, 312, 344, 376, 400, 415, 428, 450, 473, 489, 509, 518},
-		MList:     []float64{10.0, 4.0, 1.0},
+		MList:     map[int]float64{0: 9, 5: 2, 20: 1},
 	},
-	"wuhan": PredictTemp{
+	"湖北省-420100": PredictTemp{
 		Infection: []int{258, 363, 425, 495, 572, 618, 698, 1590, 1905, 2261, 2639, 3215, 4109, 5142, 6384, 8351, 10117, 11618, 13603, 14982, 16902, 18454, 19558, 32994},
-		MList:     []float64{10.0, 8.0, 4.0},
+		MList:     map[int]float64{0: 15, 10: 7, 15: 6, 18: 2},
 	},
 }
 

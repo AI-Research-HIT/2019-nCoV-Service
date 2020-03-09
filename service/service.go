@@ -30,6 +30,7 @@ func StartService(ctx context.Context) {
 	apiRouter.HandleFunc("/chinamobile-data", ChinaMobileDataHandler).Methods("GET")
 	apiRouter.HandleFunc("/baidu-incity", BaiduInCityHandler).Methods("GET")
 	apiRouter.HandleFunc("/province-data", AllProvinceDataHandler).Methods("GET")
+	apiRouter.HandleFunc("/simulate", MonteCarloSimulationHandler).Methods("POST")
 
 	r.Use(mw.CorsMw)
 	//r.Use(mw.JwtAuthMw)

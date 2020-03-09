@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math/rand"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,6 +17,7 @@ import (
 )
 
 func main() {
+	rand.Seed(time.Now().Unix())
 	err := config.ParseConfig()
 	if err != nil {
 		ewlog.Fatal(err)
