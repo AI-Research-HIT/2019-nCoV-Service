@@ -90,12 +90,18 @@ type MonteCarloSimulationRequest struct {
 	City         int64           `json:"city"`
 	Province     string          `json:"province"`
 	PredictDay   int             `json:"predictDay"`
-	Beta         float64         `json:"beta"`
+	BetaList     map[int]float64 `json:"betalist"`
 	Mlist        map[int]float64 `json:"mlist"`
 	TreamentList map[int]int     `json:"treamentList"`
+	SimulateNum  int             `json:"simNum"`
 }
 
-type MonteCarloSimulationResponse struct {
+type MonteCarloSimulationResp struct {
+	Statistic   []MonteCarloSimulationItem `json:"statistic"`
+	SpreadTrack SpreadTrackResponse        `json:"spreadTrack"`
+}
+
+type MonteCarloSimulationItem struct {
 	InfectedCount    int    `json:"infectedCount"`
 	InfectedNew      int    `json:"infectedNew"`
 	ConfirmCount     int    `json:"confirmCount"`
@@ -113,4 +119,26 @@ type MonteCarloSimulationResponse struct {
 	Date             string `json:"date"`
 	InfectingCount   int    `json:"infectingCount"`
 	TreamentingCount int    `json:"treamentingCount"`
+}
+
+type SpreadTrackResponse struct {
+	Nodes      []SpreadNode     `json:"nodes"`
+	Links      []SpreadLink     `json:"links"`
+	Categories []SpreadCategory `json:"categories"`
+	Legends    []string         `json:"legends"`
+}
+
+type SpreadNode struct {
+	Name     string `json:"name"`
+	Value    int    `json:"value"`
+	Category int    `json:"category"`
+}
+
+type SpreadLink struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+type SpreadCategory struct {
+	Name string `json:"name"`
 }

@@ -207,24 +207,81 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := model.Simulate(DayOne.TotalInfection, request.PredictDay, request.Mlist, request.Beta, request.TreamentList, startDate)
-	if err != nil {
-		ewlog.Error(err)
-		resputil.WriteFailed(w, 102, err.Error())
-		return
+	allResult := []protodef.MonteCarloSimulationResp{}
+
+	calNum := 20
+
+	if request.SimulateNum > 0 {
+		calNum = request.SimulateNum
 	}
 
-	for i, _ := range result {
+	for i := 0; i < calNum; i++ {
+		result, err := model.Simulate(DayOne.TotalInfection, request.PredictDay, request.Mlist, request.BetaList, request.TreamentList, startDate)
+		if err != nil {
+			ewlog.Error(err)
+			//resputil.WriteFailed(w, 102, err.Error())
+			continue
+		}
+		allResult = append(allResult, result)
+	}
+
+	result := protodef.MonteCarloSimulationResp{
+		SpreadTrack: allResult[0].SpreadTrack,
+		Statistic:   []protodef.MonteCarloSimulationItem{},
+	}
+
+	for i := 0; i < len(allResult[0].Statistic); i++ {
+		InfectedCount := 0
+		InfectedNew := 0
+		ConfirmCount := 0
+		ConfirmNew := 0
+		CureCount := 0
+		CureNew := 0
+		DeadCount := 0
+		DeadNew := 0
+		InfectingCount := 0
+		TreamentingCount := 0
+		for j := 0; j < len(allResult); j++ {
+			InfectedCount += allResult[j].Statistic[i].InfectedCount
+			InfectedNew += allResult[j].Statistic[i].InfectedNew
+			ConfirmCount += allResult[j].Statistic[i].ConfirmCount
+			ConfirmNew += allResult[j].Statistic[i].ConfirmNew
+			CureCount += allResult[j].Statistic[i].CureCount
+			CureNew += allResult[j].Statistic[i].CureNew
+			DeadCount += allResult[j].Statistic[i].DeadCount
+			DeadNew += allResult[j].Statistic[i].DeadNew
+			InfectingCount += allResult[j].Statistic[i].InfectingCount
+			TreamentingCount += allResult[j].Statistic[i].TreamentingCount
+		}
+
+		s := protodef.MonteCarloSimulationItem{
+			InfectedCount:    InfectedCount / calNum,
+			ConfirmCount:     ConfirmCount / calNum,
+			CureCount:        CureCount / calNum,
+			DeadCount:        DeadCount / calNum,
+			InfectedNew:      InfectedNew / calNum,
+			ConfirmNew:       ConfirmNew / calNum,
+			CureNew:          CureNew / calNum,
+			DeadNew:          DeadNew / calNum,
+			InfectingCount:   InfectingCount / calNum,
+			TreamentingCount: TreamentingCount / calNum,
+			Date:             allResult[0].Statistic[i].Date,
+		}
+		result.Statistic = append(result.Statistic, s)
+
+	}
+
+	for i := range result.Statistic {
 		if i == len(province.Detail) {
 			break
 		}
 
-		result[i].RealConfirmCount = province.Detail[i].TotalInfection
-		result[i].RealConfirmNew = province.Detail[i].NewInfection
-		result[i].RealCureCount = province.Detail[i].TotalCure
-		result[i].RealCureNew = province.Detail[i].NewCure
-		result[i].RealDeadCount = province.Detail[i].TotalDeath
-		result[i].RealDeadNew = province.Detail[i].NewDeath
+		result.Statistic[i].RealConfirmCount = province.Detail[i].TotalInfection
+		result.Statistic[i].RealConfirmNew = province.Detail[i].NewInfection
+		result.Statistic[i].RealCureCount = province.Detail[i].TotalCure
+		result.Statistic[i].RealCureNew = province.Detail[i].NewCure
+		result.Statistic[i].RealDeadCount = province.Detail[i].TotalDeath
+		result.Statistic[i].RealDeadNew = province.Detail[i].NewDeath
 	}
 
 	resputil.WriteSuccessWithData(w, result)

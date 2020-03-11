@@ -4,13 +4,18 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/AI-Research-HIT/2019-nCoV-Service/protodef"
 	"github.com/AI-Research-HIT/2019-nCoV-Service/util"
+	"github.com/ender-wan/ewlog"
 )
 
-type People struct {
+type Person struct {
+	PID             int64
+	InfectorID      int64
 	Status          int
 	Behavior        int
 	Te              int
@@ -21,7 +26,16 @@ type People struct {
 	Age             int
 	ConfirmStartDay int
 	CuredDay        int
+	InfectPeople    []int64
 }
+
+type PersonSlice []Person
+
+func (s PersonSlice) Len() int { return len(s) }
+
+func (s PersonSlice) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+
+func (s PersonSlice) Less(i, j int) bool { return s[i].PID < s[j].PID }
 
 const (
 	StatusNormal = iota
@@ -39,7 +53,7 @@ const (
 	BehaviorTreatment
 )
 
-func (p *People) generateAge() {
+func (p *Person) generateAge() {
 	prob := rand.Float64()
 	if prob < 0.17 {
 		p.Age = rand.Intn(15)
@@ -50,7 +64,7 @@ func (p *People) generateAge() {
 	}
 }
 
-func (p *People) generateCureDay() {
+func (p *Person) generateCureDay() {
 	prob := rand.Float64()
 	if prob < 0.1 {
 		p.CuredDay = rand.Intn(3) + 5
@@ -65,7 +79,7 @@ func (p *People) generateCureDay() {
 	}
 }
 
-func (p *People) generateDeadProp() {
+func (p *Person) generateDeadProp() {
 	if p.Age > 65 {
 		p.DeadProp = 0.05
 	} else if p.Age >= 40 {
@@ -77,7 +91,7 @@ func (p *People) generateDeadProp() {
 	}
 }
 
-func (p *People) generateTe() {
+func (p *Person) generateTe() {
 	prob := rand.Intn(100)
 	if prob < 5 {
 		p.Te = 14
@@ -94,7 +108,7 @@ func (p *People) generateTe() {
 	}
 }
 
-func (p *People) generateM(baseM float64) {
+func (p *Person) generateM(baseM float64) {
 	if baseM < 3.0 {
 		p.M = baseM
 		return
@@ -111,7 +125,7 @@ func (p *People) generateM(baseM float64) {
 
 }
 
-func (p *People) generateBeta(baseBeta float64) {
+func (p *Person) generateBeta(baseBeta float64) {
 	flucBeta := baseBeta / 10.0
 
 	isPositive := rand.Intn(1)
@@ -124,7 +138,7 @@ func (p *People) generateBeta(baseBeta float64) {
 	}
 }
 
-func (p *People) ChangeStatus() int {
+func (p *Person) ChangeStatus() int {
 	prob := rand.Float64()
 	if prob > p.DeadProp {
 		p.Status = StatusCured
@@ -135,7 +149,7 @@ func (p *People) ChangeStatus() int {
 	return p.Status
 }
 
-func (p *People) InitInfectedPerson(baseM float64, baseBeta float64, infectDay int) {
+func (p *Person) InitInfectedPerson(baseM float64, baseBeta float64, infectDay int) {
 	p.Status = StatusInfected
 	p.Behavior = BehaviorFree
 	p.generateTe()
@@ -147,29 +161,40 @@ func (p *People) InitInfectedPerson(baseM float64, baseBeta float64, infectDay i
 	p.generateCureDay()
 }
 
-func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int) []People {
-	people := []People{}
+func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int, pid *int64) []Person {
+	people := []Person{}
 	for i := 0; i < num; i++ {
-		p := People{}
+		p := Person{
+			PID:          *pid,
+			InfectorID:   0,
+			InfectPeople: []int64{},
+		}
 		p.InitInfectedPerson(baseM, baseBeta, infectDay)
 		people = append(people, p)
+		*pid++
 	}
 
 	return people
 }
 
-func infectPerson(num int, baseM float64, baseBeta float64, infectDay int) []People {
-	people := []People{}
+func infectPerson(num int, baseM float64, baseBeta float64, infectDay int, pid *int64, person *Person) []Person {
+	people := []Person{}
 	for i := 0; i < num; i++ {
-		p := People{}
+		p := Person{
+			PID:          *pid,
+			InfectorID:   person.PID,
+			InfectPeople: []int64{},
+		}
+		person.InfectPeople = append(person.InfectPeople, *pid)
 		p.InitInfectedPerson(baseM, baseBeta, infectDay)
 		people = append(people, p)
+		*pid++
 	}
 
 	return people
 }
 
-func infectNum(p People, idx int) int {
+func infectNum(p Person, idx int) int {
 	count := 0
 	avg := p.Beta / float64(p.Te)
 	weight := (idx - p.InfectStartDay) + 1
@@ -186,40 +211,55 @@ func infectNum(p People, idx int) int {
 	return count
 }
 
-func Simulate(seedNum, day int, mlist map[int]float64, baseBeta float64, TreatmentList map[int]int, startDate time.Time) ([]protodef.MonteCarloSimulationResponse, error) {
+func Simulate(seedNum, day int, mlist map[int]float64, betaList map[int]float64, TreatmentList map[int]int, startDate time.Time) (protodef.MonteCarloSimulationResp, error) {
 	baseM, ok := mlist[0]
 	if !ok {
 		baseM = 2.0
 	}
+
+	var pid int64 = 1
 
 	TreatmentTime, ok := TreatmentList[0]
 	if ok {
 		TreatmentTime = 4
 	}
 
-	people := initInfectedSeed(seedNum, baseM, baseBeta, 0)
+	baseBeta, ok := betaList[0]
+	if !ok {
+		baseBeta = 0.05
+	}
 
-	statistics := []protodef.MonteCarloSimulationResponse{protodef.MonteCarloSimulationResponse{
+	people := initInfectedSeed(seedNum, baseM, baseBeta, 0, &pid)
+
+	statistics := []protodef.MonteCarloSimulationItem{protodef.MonteCarloSimulationItem{
 		InfectedCount: seedNum,
 		InfectedNew:   seedNum,
 		Date:          startDate.Format(util.DateLayout)},
 	}
+
+	resp := protodef.MonteCarloSimulationResp{}
+
 	startDate = startDate.AddDate(0, 0, 1)
-	CuredPeople := []People{}
-	DeadPeople := []People{}
+	CuredPeople := []Person{}
+	DeadPeople := []Person{}
 
 	for i := 1; i < day; i++ {
-		added := []People{}
+		added := []Person{}
 
-		stat := protodef.MonteCarloSimulationResponse{}
+		stat := protodef.MonteCarloSimulationItem{}
 		m, ok := mlist[i]
 		if ok {
 			baseM = m
 		}
 
-		tm, ok := TreatmentList[0]
+		tm, ok := TreatmentList[i]
 		if ok {
 			TreatmentTime = tm
+		}
+
+		beta, ok := betaList[i]
+		if ok {
+			baseBeta = beta
 		}
 
 		for idx, p := range people {
@@ -243,7 +283,7 @@ func Simulate(seedNum, day int, mlist map[int]float64, baseBeta float64, Treatme
 				if spreadNum > 0 {
 					stat.InfectedNew += spreadNum
 
-					new := infectPerson(spreadNum, baseM, baseBeta, i)
+					new := infectPerson(spreadNum, baseM, baseBeta, i, &pid, &people[idx])
 					added = append(added, new...)
 				}
 			}
@@ -279,7 +319,7 @@ func Simulate(seedNum, day int, mlist map[int]float64, baseBeta float64, Treatme
 		stat.Date = startDate.Format(util.DateLayout)
 		startDate = startDate.AddDate(0, 0, 1)
 
-		tmpPeople := []People{}
+		tmpPeople := []Person{}
 
 		for _, tp := range people {
 			if tp.Status != StatusCured && tp.Status != StatusDead {
@@ -292,10 +332,135 @@ func Simulate(seedNum, day int, mlist map[int]float64, baseBeta float64, Treatme
 		//fmt.Println("累计: ", len(people))
 
 		if len(people) > OneMillion {
-			return statistics, errors.New(fmt.Sprintf("在第%d天，%d人同时感染冠状病毒，局势已经失控, 停止仿真计算", i, len(people)))
+			return resp, errors.New(fmt.Sprintf("在第%d天，%d人同时感染冠状病毒，局势已经失控, 停止仿真计算", i, len(people)))
 		}
 	}
 
+	resp.Statistic = statistics
+
+	totalPeople := map[int64]Person{}
+
+	for _, p := range people {
+		totalPeople[p.PID] = p
+	}
+
+	for _, p := range DeadPeople {
+		totalPeople[p.PID] = p
+	}
+
+	for _, p := range CuredPeople {
+		totalPeople[p.PID] = p
+	}
+
+	allPeople := []Person{}
+	for _, v := range totalPeople {
+		allPeople = append(allPeople, v)
+	}
+
+	sort.Sort(PersonSlice(allPeople))
+
+	resp.SpreadTrack = statisticSpreadTrack(totalPeople, &allPeople)
+
 	//fmt.Println("总数", len(people))
-	return statistics, nil
+	return resp, nil
+}
+
+func statisticSpreadTrack(totalPeople map[int64]Person, allPeople *[]Person) protodef.SpreadTrackResponse {
+	spreadResp := protodef.SpreadTrackResponse{
+		Nodes: []protodef.SpreadNode{},
+		Links: []protodef.SpreadLink{},
+	}
+
+	count := 0
+
+	addedPeople := map[int64]bool{}
+	categories := []int64{}
+
+	for _, v := range *allPeople {
+		if count > 3 {
+			break
+		}
+		spreadLink(v, &addedPeople, &totalPeople, &spreadResp, v.PID, &categories)
+		count++
+	}
+	spreadResp.Categories, spreadResp.Legends = generateCategories(&categories)
+
+	return spreadResp
+}
+
+func generateCategories(catetories *[]int64) ([]protodef.SpreadCategory, []string) {
+	cs := []protodef.SpreadCategory{}
+	legends := []string{}
+
+	for _, v := range *catetories {
+		c := strconv.FormatInt(v, 10)
+		cate := protodef.SpreadCategory{
+			Name: c,
+		}
+		cs = append(cs, cate)
+		legends = append(legends, c)
+	}
+
+	return cs, legends
+}
+
+func findCategoryIndex(pid int64, categories *[]int64) int {
+
+	for i, v := range *categories {
+		if v == pid {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func spreadLink(person Person, added *map[int64]bool, totalPeople *map[int64]Person,
+	resp *protodef.SpreadTrackResponse, pid int64, categories *[]int64) {
+	if _, ok := (*added)[person.PID]; ok {
+		return
+	}
+
+	if len(person.InfectPeople) > 0 {
+		category := findCategoryIndex(pid, categories)
+		if category < 0 {
+			*categories = append(*categories, pid)
+			category = len(*categories) - 1
+		}
+
+		(*resp).Nodes = append((*resp).Nodes, protodef.SpreadNode{
+			Name:     strconv.FormatInt(person.PID, 10),
+			Value:    len(person.InfectPeople),
+			Category: category,
+		})
+
+		(*added)[person.PID] = true
+
+		for _, val := range person.InfectPeople {
+			(*resp).Links = append((*resp).Links, protodef.SpreadLink{
+				Source: strconv.FormatInt(person.PID, 10),
+				Target: strconv.FormatInt(val, 10),
+			})
+			if _, ok := (*added)[val]; ok {
+				continue
+			}
+			p := (*totalPeople)[val]
+			spreadLink(p, added, totalPeople, resp, pid, categories)
+		}
+	}
+}
+
+func printLen(people map[int64]Person, pid int64, count int, spreadStat *[]int) {
+	count++
+	p, ok := people[pid]
+	if ok {
+		ewlog.Infof("pid %d infect %d people", pid, len(p.InfectPeople))
+		if len(p.InfectPeople) > 0 {
+			for _, ip := range p.InfectPeople {
+				printLen(people, ip, count, spreadStat)
+			}
+		}
+	}
+	*spreadStat = append(*spreadStat, count)
+	ewlog.Infof("传播层数 %d", count)
 }
