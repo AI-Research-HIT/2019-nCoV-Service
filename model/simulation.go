@@ -290,11 +290,13 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 			people[idx].generateM(baseM)
 			people[idx].modifyTreatmentEffect(teffect)
 
+			// 开始发病
 			if p.InfectStartDay+p.Te == i {
 				people[idx].Status = StatusAttacked
 				people[idx].Behavior = BehaviorQuarantine
 			}
 
+			// 发现确诊并治疗
 			if p.InfectStartDay+p.Te+p.TreatmentDay == i {
 				people[idx].Behavior = BehaviorTreatment
 				people[idx].ConfirmStartDay = i
@@ -303,7 +305,7 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 				if isQuarantine {
 					for _, infector := range p.InfectPeople {
 						for idx2, p2 := range people {
-							if p2.PID == infector {
+							if p2.PID == infector && p2.Behavior != BehaviorTreatment {
 								people[idx2].Behavior = BehaviorQuarantine
 							}
 						}
