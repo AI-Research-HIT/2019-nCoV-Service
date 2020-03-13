@@ -214,9 +214,19 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 	if request.SimulateNum > 0 {
 		calNum = request.SimulateNum
 	}
+	isCalSpread := true
+
+	treatmentEffect := map[int]float64{
+		0: 1.0,
+	}
 
 	for i := 0; i < calNum; i++ {
-		result, err := model.Simulate(DayOne.TotalInfection, request.PredictDay, request.Mlist, request.BetaList, request.TreamentList, startDate)
+		if i != 0 {
+			isCalSpread = false
+		}
+
+		result, err := model.Simulate(DayOne.TotalInfection, request.PredictDay, request.Mlist, request.BetaList,
+			request.TreamentList, treatmentEffect, startDate, isCalSpread, request.IsQuarantineCloser)
 		if err != nil {
 			ewlog.Error(err)
 			//resputil.WriteFailed(w, 102, err.Error())
@@ -230,6 +240,10 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 		Statistic:   []protodef.MonteCarloSimulationItem{},
 	}
 
+	if len(result.SpreadTrack.Nodes) > 500 {
+		result.SpreadTrack = protodef.SpreadTrackResponse{}
+	}
+
 	for i := 0; i < len(allResult[0].Statistic); i++ {
 		InfectedCount := 0
 		InfectedNew := 0
@@ -241,8 +255,22 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 		DeadNew := 0
 		InfectingCount := 0
 		TreamentingCount := 0
+		InfectedMin := 0
+		InfectedMax := 0
 		for j := 0; j < len(allResult); j++ {
-			InfectedCount += allResult[j].Statistic[i].InfectedCount
+			count := allResult[j].Statistic[i].InfectedCount
+			if j == 0 {
+				InfectedMin = count
+				InfectedMax = count
+			} else {
+				if InfectedMin > count {
+					InfectedMin = count
+				}
+				if InfectedMax < count {
+					InfectedMax = count
+				}
+			}
+			InfectedCount += count
 			InfectedNew += allResult[j].Statistic[i].InfectedNew
 			ConfirmCount += allResult[j].Statistic[i].ConfirmCount
 			ConfirmNew += allResult[j].Statistic[i].ConfirmNew
@@ -254,8 +282,12 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 			TreamentingCount += allResult[j].Statistic[i].TreamentingCount
 		}
 
+		count := InfectedCount / calNum
+		min := count - (count-InfectedMin)/5
+		max := (InfectedMax-count)/5 + count
+
 		s := protodef.MonteCarloSimulationItem{
-			InfectedCount:    InfectedCount / calNum,
+			InfectedCount:    count,
 			ConfirmCount:     ConfirmCount / calNum,
 			CureCount:        CureCount / calNum,
 			DeadCount:        DeadCount / calNum,
@@ -265,6 +297,8 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 			DeadNew:          DeadNew / calNum,
 			InfectingCount:   InfectingCount / calNum,
 			TreamentingCount: TreamentingCount / calNum,
+			InfectedMin:      min,
+			InfectedMax:      max - min,
 			Date:             allResult[0].Statistic[i].Date,
 		}
 		result.Statistic = append(result.Statistic, s)

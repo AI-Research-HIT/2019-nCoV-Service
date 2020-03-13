@@ -87,13 +87,14 @@ type AllProviceDataRequest struct {
 }
 
 type MonteCarloSimulationRequest struct {
-	City         int64           `json:"city"`
-	Province     string          `json:"province"`
-	PredictDay   int             `json:"predictDay"`
-	BetaList     map[int]float64 `json:"betalist"`
-	Mlist        map[int]float64 `json:"mlist"`
-	TreamentList map[int]int     `json:"treamentList"`
-	SimulateNum  int             `json:"simNum"`
+	City               int64           `json:"city"`
+	Province           string          `json:"province"`
+	PredictDay         int             `json:"predictDay"`
+	BetaList           map[int]float64 `json:"betalist"`
+	Mlist              map[int]float64 `json:"mlist"`
+	TreamentList       map[int]int     `json:"treamentList"`
+	SimulateNum        int             `json:"simNum"`
+	IsQuarantineCloser bool            `json:"isQuarantineCloser"`
 }
 
 type MonteCarloSimulationResp struct {
@@ -103,6 +104,8 @@ type MonteCarloSimulationResp struct {
 
 type MonteCarloSimulationItem struct {
 	InfectedCount    int    `json:"infectedCount"`
+	InfectedMin      int    `json:"infectedMin"`
+	InfectedMax      int    `json:"infectedMax"`
 	InfectedNew      int    `json:"infectedNew"`
 	ConfirmCount     int    `json:"confirmCount"`
 	ConfirmNew       int    `json:"confirmNew"`
