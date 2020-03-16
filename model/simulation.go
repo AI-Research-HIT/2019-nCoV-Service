@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"sort"
 	"strconv"
 	"time"
 
@@ -14,20 +13,21 @@ import (
 )
 
 type Person struct {
-	PID             int64
-	InfectorID      int64
-	Status          int
-	Behavior        int
-	Te              int
-	M               float64
-	Beta            float64
-	InfectStartDay  int
-	DeadProp        float64
-	Age             int
-	ConfirmStartDay int
-	CuredDay        int
-	InfectPeople    []int64
-	TreatmentDay    int
+	PID              int64
+	InfectorID       int64
+	Status           int
+	Behavior         int
+	Te               int
+	M                float64
+	Beta             float64
+	InfectStartDay   int
+	AttackedStartDay int
+	DeadProp         float64
+	Age              int
+	ConfirmStartDay  int
+	CuredDay         int
+	InfectPeople     []int64
+	TreatmentDay     int
 }
 
 type PersonSlice []Person
@@ -165,8 +165,8 @@ func (p *Person) InitInfectedPerson(baseM float64, baseBeta float64, infectDay i
 	p.generateCureDay()
 }
 
-func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int, pid *int64) []Person {
-	people := []Person{}
+func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int, pid *int64) map[int64]*Person {
+	people := map[int64]*Person{}
 	for i := 0; i < num; i++ {
 		p := Person{
 			PID:          *pid,
@@ -174,15 +174,15 @@ func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int, p
 			InfectPeople: []int64{},
 		}
 		p.InitInfectedPerson(baseM, baseBeta, infectDay)
-		people = append(people, p)
+		people[*pid] = &p
 		*pid++
 	}
 
 	return people
 }
 
-func infectPerson(num int, baseM float64, baseBeta float64, infectDay int, treamentDay int, pid *int64, person *Person) []Person {
-	people := []Person{}
+func infectPerson(num int, baseM float64, baseBeta float64, infectDay int, treamentDay int, pid *int64, person *Person) []*Person {
+	people := []*Person{}
 	for i := 0; i < num; i++ {
 		p := Person{
 			PID:          *pid,
@@ -190,16 +190,16 @@ func infectPerson(num int, baseM float64, baseBeta float64, infectDay int, tream
 			InfectPeople: []int64{},
 			TreatmentDay: treamentDay,
 		}
-		person.InfectPeople = append(person.InfectPeople, *pid)
+		person.InfectPeople = append(person.InfectPeople, p.PID)
 		p.InitInfectedPerson(baseM, baseBeta, infectDay)
-		people = append(people, p)
+		people = append(people, &p)
 		*pid++
 	}
 
 	return people
 }
 
-func infectNum(p Person, idx int) int {
+func infectNum(p *Person, idx int) int {
 	if p.Beta < 0.0000001 {
 		return 0
 	}
@@ -255,11 +255,12 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 	resp := protodef.MonteCarloSimulationResp{}
 
 	startDate = startDate.AddDate(0, 0, 1)
-	CuredPeople := []Person{}
-	DeadPeople := []Person{}
+	CuredPeople := map[int64]*Person{}
+	DeadPeople := map[int64]*Person{}
 
+	pCount := len(people)
 	for i := 1; i < day; i++ {
-		added := []Person{}
+		added := []*Person{}
 
 		stat := protodef.MonteCarloSimulationItem{}
 		m, ok := mlist[i]
@@ -282,66 +283,69 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 			teffect = effect
 		}
 
-		for idx, p := range people {
-			if p.Status == StatusCured || p.Status == StatusDead {
-				continue
-			}
+		shouldDelete := []int64{}
 
-			people[idx].generateM(baseM)
-			people[idx].modifyTreatmentEffect(teffect)
+		for _, p := range people {
+			p.generateM(baseM)
+			p.modifyTreatmentEffect(teffect)
 
 			// 开始发病
-			if p.InfectStartDay+p.Te == i {
-				people[idx].Status = StatusAttacked
-				people[idx].Behavior = BehaviorQuarantine
+			if i-p.InfectStartDay >= p.Te && p.Status == StatusInfected {
+				p.Status = StatusAttacked
+				p.Behavior = BehaviorQuarantine
+				p.AttackedStartDay = i
 			}
 
 			// 发现确诊并治疗
-			if p.InfectStartDay+p.Te+p.TreatmentDay == i {
-				people[idx].Behavior = BehaviorTreatment
-				people[idx].ConfirmStartDay = i
+			if i-p.AttackedStartDay >= p.TreatmentDay && p.Status == StatusAttacked && p.Behavior != BehaviorTreatment {
+				p.ConfirmStartDay = i
+				p.Behavior = BehaviorTreatment
 				stat.ConfirmNew++
 
 				if isQuarantine {
+					// 隔离确诊病人接触者
 					for _, infector := range p.InfectPeople {
-						for idx2, p2 := range people {
-							if p2.PID == infector && p2.Behavior != BehaviorTreatment {
-								people[idx2].Behavior = BehaviorQuarantine
-							}
+						if _, ok := people[infector]; !ok {
+							continue
+						}
+						if people[infector].PID == infector && people[infector].Behavior != BehaviorTreatment {
+							people[infector].Behavior = BehaviorQuarantine
 						}
 					}
 				}
 			}
 
-			if people[idx].Behavior == BehaviorFree &&
-				(people[idx].Status == StatusInfected || people[idx].Status == StatusAttacked) {
+			if p.Behavior == BehaviorFree &&
+				(p.Status == StatusInfected || p.Status == StatusAttacked) {
 				spreadNum := infectNum(p, i)
 				if spreadNum > 0 {
+					pCount += spreadNum
 					stat.InfectedNew += spreadNum
 
-					new := infectPerson(spreadNum, baseM, baseBeta, i, TreatmentTime, &pid, &people[idx])
+					new := infectPerson(spreadNum, baseM, baseBeta, i, TreatmentTime, &pid, p)
 					added = append(added, new...)
 				}
 			}
 
 			if p.Behavior == BehaviorTreatment {
-				if p.ConfirmStartDay+p.CuredDay == i {
-					status := people[idx].ChangeStatus()
+				if i-p.ConfirmStartDay >= p.CuredDay {
+					status := p.ChangeStatus()
 					if status == StatusCured {
 						stat.CureNew++
-						CuredPeople = append(CuredPeople, p)
+						CuredPeople[p.PID] = p
 					} else {
 						stat.DeadNew++
-						DeadPeople = append(DeadPeople, p)
+						DeadPeople[p.PID] = p
 					}
-
+					shouldDelete = append(shouldDelete, p.PID)
+					continue
 				}
 			}
-			if people[idx].Status == StatusInfected || people[idx].Status == StatusAttacked {
+			if p.Status == StatusInfected || p.Status == StatusAttacked {
 				stat.InfectingCount++
 			}
 
-			if people[idx].Behavior == BehaviorTreatment {
+			if p.Behavior == BehaviorTreatment {
 				stat.TreamentingCount++
 			}
 		}
@@ -355,15 +359,14 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 		stat.Date = startDate.Format(util.DateLayout)
 		startDate = startDate.AddDate(0, 0, 1)
 
-		tmpPeople := []Person{}
-
-		for _, tp := range people {
-			if tp.Status != StatusCured && tp.Status != StatusDead {
-				tmpPeople = append(tmpPeople, tp)
-			}
+		for _, del := range shouldDelete {
+			delete(people, del)
 		}
 
-		people = append(tmpPeople, added...)
+		for _, add := range added {
+			people[add.PID] = add
+		}
+
 		statistics = append(statistics, stat)
 		//fmt.Println("累计: ", len(people))
 
@@ -375,34 +378,41 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 	resp.Statistic = statistics
 
 	if isCalSpread {
-		totalPeople := map[int64]Person{}
+		totalPeople := map[int64]*Person{}
 
+		ewlog.Infof("remain infecting: %d", len(people))
 		for _, p := range people {
 			totalPeople[p.PID] = p
 		}
+
+		ewlog.Infof("all dead: %d", len(DeadPeople))
 
 		for _, p := range DeadPeople {
 			totalPeople[p.PID] = p
 		}
 
+		ewlog.Infof("all cured: %d", len(CuredPeople))
+
 		for _, p := range CuredPeople {
 			totalPeople[p.PID] = p
 		}
 
-		allPeople := []Person{}
-		for _, v := range totalPeople {
-			allPeople = append(allPeople, v)
-		}
+		// allPeople := []Person{}
+		// for _, v := range totalPeople {
+		// 	allPeople = append(allPeople, v)
+		// }
 
-		sort.Sort(PersonSlice(allPeople))
+		// sort.Sort(PersonSlice(allPeople))
 
-		resp.SpreadTrack = statisticSpreadTrack(totalPeople, &allPeople)
+		ewlog.Infof("count %d, totalMap: %d", pCount, len(totalPeople))
+
+		resp.SpreadTrack = statisticSpreadTrack(&totalPeople)
 	}
 	//fmt.Println("总数", len(people))
 	return resp, nil
 }
 
-func statisticSpreadTrack(totalPeople map[int64]Person, allPeople *[]Person) protodef.SpreadTrackResponse {
+func statisticSpreadTrack(totalPeople *map[int64]*Person) protodef.SpreadTrackResponse {
 	spreadResp := protodef.SpreadTrackResponse{
 		Nodes: []protodef.SpreadNode{},
 		Links: []protodef.SpreadLink{},
@@ -413,11 +423,11 @@ func statisticSpreadTrack(totalPeople map[int64]Person, allPeople *[]Person) pro
 	addedPeople := map[int64]bool{}
 	categories := []int64{}
 
-	for _, v := range *allPeople {
-		if count >= 2 {
+	for _, v := range *totalPeople {
+		if count >= 10 {
 			break
 		}
-		spreadLink(v, &addedPeople, &totalPeople, &spreadResp, v.PID, &categories)
+		spreadLink(*v, &addedPeople, totalPeople, &spreadResp, v.PID, &categories)
 		count++
 	}
 	spreadResp.Categories, spreadResp.Legends = generateCategories(&categories)
@@ -452,7 +462,7 @@ func findCategoryIndex(pid int64, categories *[]int64) int {
 	return -1
 }
 
-func spreadLink(person Person, added *map[int64]bool, totalPeople *map[int64]Person,
+func spreadLink(person Person, added *map[int64]bool, totalPeople *map[int64]*Person,
 	resp *protodef.SpreadTrackResponse, pid int64, categories *[]int64) {
 	if _, ok := (*added)[person.PID]; ok {
 		return
@@ -482,7 +492,11 @@ func spreadLink(person Person, added *map[int64]bool, totalPeople *map[int64]Per
 				continue
 			}
 			p := (*totalPeople)[val]
-			spreadLink(p, added, totalPeople, resp, pid, categories)
+			if p == nil {
+				ewlog.Info("not found ", val)
+				continue
+			}
+			spreadLink(*p, added, totalPeople, resp, pid, categories)
 		}
 	}
 }

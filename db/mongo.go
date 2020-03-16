@@ -114,10 +114,10 @@ func InsertLatestOverallData(overall cli.OverAllT) (err error) {
 	return err
 }
 
-func FindLatestOverallData(updateTime int64) (result cli.OverAllT, err error) {
+func FindLatestOverallData() (result cli.OverAllT, err error) {
 	ctx := context.Background()
 
-	rs := dbClient.Database(dbName).Collection(overallCol).FindOne(ctx, bson.M{"updateTime": bson.M{"$gte": updateTime * 1000}})
+	rs := dbClient.Database(dbName).Collection(overallCol).FindOne(ctx, bson.M{})
 
 	err = rs.Decode(&result)
 
@@ -245,6 +245,7 @@ func fetchLatestProvinceData() (err error) {
 			}
 		}
 
+		time.Sleep(time.Second * 20)
 	}
 
 	return

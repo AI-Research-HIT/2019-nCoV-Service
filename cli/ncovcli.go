@@ -144,7 +144,7 @@ func RetryGetAllProvinceData(dtype int, province string, retryTimes int) (all []
 		if err == nil {
 			break
 		}
-		time.Sleep(time.Second * 3)
+		time.Sleep(time.Second * 20)
 	}
 
 	return

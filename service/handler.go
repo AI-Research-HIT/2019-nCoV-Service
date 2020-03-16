@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -53,17 +54,14 @@ func MDataHandler(w http.ResponseWriter, r *http.Request) {
 
 func LatestDataHandler(w http.ResponseWriter, r *http.Request) {
 	now := util.TodayStartTime()
-	rs, err := db.FindLatestOverallData(now.Unix())
-	if err != nil {
+	rs, err := db.FindLatestOverallData()
+	if err != nil || rs.UpdateTime < now.Unix()*1000 {
 		ewlog.Error(err)
 
 		all, err := cli.GetOverAll(1)
-		if err != nil {
+		if err != nil || len(all) == 0 {
 			ewlog.Error(err)
-			resputil.WriteFailed(w, 400, "latest data not found")
-			return
-		}
-		if len(all) > 0 {
+		} else if len(all) > 0 {
 			err = db.InsertLatestOverallData(all[0])
 			if err != nil {
 				ewlog.Error(err)
@@ -71,12 +69,7 @@ func LatestDataHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			rs = all[0]
-		} else {
-			ewlog.Errorf("overall api call failed")
-			resputil.WriteFailed(w, 400, "latest data not found")
-			return
 		}
-
 	}
 	data := protodef.LatestData{
 		NowInfection:   rs.CurrentConfirmedCount,
@@ -220,20 +213,35 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 		0: 1.0,
 	}
 
+	var countTime int64 = 0
+
 	for i := 0; i < calNum; i++ {
 		if i != 0 {
 			isCalSpread = false
 		}
+		startT := time.Now()
 
 		result, err := model.Simulate(DayOne.TotalInfection, request.PredictDay, request.Mlist, request.BetaList,
 			request.TreamentList, treatmentEffect, startDate, isCalSpread, request.IsQuarantineCloser)
+
+		endT := time.Now()
+
+		countTime += endT.UnixNano() - startT.UnixNano()
 		if err != nil {
 			ewlog.Error(err)
 			//resputil.WriteFailed(w, 102, err.Error())
 			continue
 		}
+		if countTime > int64(time.Second*10) {
+			err = errors.New("该参数计算时间太长，取消计算")
+			ewlog.Error(err)
+			resputil.WriteFailed(w, 103, err.Error())
+			return
+		}
 		allResult = append(allResult, result)
 	}
+
+	ewlog.Infof("平局每次模拟时间%dms", countTime/int64(calNum)/int64(time.Millisecond))
 
 	result := protodef.MonteCarloSimulationResp{
 		SpreadTrack: allResult[0].SpreadTrack,
@@ -283,8 +291,8 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		count := InfectedCount / calNum
-		min := count - (count-InfectedMin)/5
-		max := (InfectedMax-count)/5 + count
+		min := count - (count-InfectedMin)/3
+		max := (InfectedMax-count)/3 + count
 
 		s := protodef.MonteCarloSimulationItem{
 			InfectedCount:    count,
