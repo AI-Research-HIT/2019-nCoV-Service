@@ -23,6 +23,7 @@ type Person struct {
 	InfectStartDay   int
 	AttackedStartDay int
 	DeadProp         float64
+	isDeadProbInced  bool
 	Age              int
 	ConfirmStartDay  int
 	CuredDay         int
@@ -41,12 +42,13 @@ func (s PersonSlice) Less(i, j int) bool { return s[i].PID < s[j].PID }
 const (
 	StatusNormal = iota
 	StatusInfected
+	StatusNoSymptom
 	StatusAttacked
 	StatusCured
 	StatusDead
 )
 
-const OneMillion = 1000 * 1000
+const OneMillion = 1000 * 10
 
 const (
 	BehaviorFree = iota
@@ -65,7 +67,7 @@ func (p *Person) generateAge() {
 	}
 }
 
-func (p *Person) generateCureDay() {
+func (p *Person) generateCureDay(extraDay int) {
 	prob := rand.Float64()
 	if prob < 0.1 {
 		p.CuredDay = rand.Intn(3) + 5
@@ -78,6 +80,8 @@ func (p *Person) generateCureDay() {
 	} else {
 		p.CuredDay = rand.Intn(19) + 3
 	}
+
+	p.CuredDay = p.CuredDay + extraDay
 }
 
 func (p *Person) generateDeadProp() {
@@ -92,7 +96,19 @@ func (p *Person) generateDeadProp() {
 	}
 }
 
-func (p *Person) generateTe() {
+func (p *Person) incressDeadProp() {
+	if !p.isDeadProbInced {
+		p.DeadProp = p.DeadProp * 3
+		p.isDeadProbInced = true
+		p.CuredDay = p.CuredDay + p.CuredDay/2
+	}
+}
+
+func (p *Person) generateTe(isNoSymptomProb bool) {
+	if isNoSymptomProb {
+		p.Te = 1000
+		return
+	}
 	prob := rand.Intn(100)
 	if prob < 5 {
 		p.Te = 14
@@ -153,19 +169,29 @@ func (p *Person) ChangeStatus() int {
 	return p.Status
 }
 
-func (p *Person) InitInfectedPerson(baseM float64, baseBeta float64, infectDay int) {
+func (p *Person) InitInfectedPerson(baseM float64, baseBeta float64, infectDay int, noSymptomProb float64) {
 	p.Status = StatusInfected
 	p.Behavior = BehaviorFree
-	p.generateTe()
+	prob := rand.Float64()
+	extraDay := 0
+	isNoSymptomProb := false
+	if prob < noSymptomProb {
+		isNoSymptomProb = true
+		//baseBeta = baseBeta / 2
+		p.Status = StatusNoSymptom
+		extraDay = 10
+	}
+
+	p.generateTe(isNoSymptomProb)
 	p.generateM(baseM)
 	p.generateBeta(baseBeta)
 	p.InfectStartDay = infectDay
 	p.generateAge()
 	p.generateDeadProp()
-	p.generateCureDay()
+	p.generateCureDay(extraDay)
 }
 
-func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int, pid *int64) map[int64]*Person {
+func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int, noSymptomProb float64, pid *int64) map[int64]*Person {
 	people := map[int64]*Person{}
 	for i := 0; i < num; i++ {
 		p := Person{
@@ -173,7 +199,7 @@ func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int, p
 			InfectorID:   0,
 			InfectPeople: []int64{},
 		}
-		p.InitInfectedPerson(baseM, baseBeta, infectDay)
+		p.InitInfectedPerson(baseM, baseBeta, infectDay, noSymptomProb)
 		people[*pid] = &p
 		*pid++
 	}
@@ -181,7 +207,7 @@ func initInfectedSeed(num int, baseM float64, baseBeta float64, infectDay int, p
 	return people
 }
 
-func infectPerson(num int, baseM float64, baseBeta float64, infectDay int, treamentDay int, pid *int64, person *Person) []*Person {
+func infectPerson(num int, baseM float64, baseBeta float64, infectDay int, treamentDay int, isNoSymptomProb float64, pid *int64, person *Person) []*Person {
 	people := []*Person{}
 	for i := 0; i < num; i++ {
 		p := Person{
@@ -191,7 +217,7 @@ func infectPerson(num int, baseM float64, baseBeta float64, infectDay int, tream
 			TreatmentDay: treamentDay,
 		}
 		person.InfectPeople = append(person.InfectPeople, p.PID)
-		p.InitInfectedPerson(baseM, baseBeta, infectDay)
+		p.InitInfectedPerson(baseM, baseBeta, infectDay, isNoSymptomProb)
 		people = append(people, &p)
 		*pid++
 	}
@@ -221,7 +247,10 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 	betaList map[int]float64, TreatmentList map[int]int,
 	treatmentEffect map[int]float64,
 	startDate time.Time, isCalSpread,
-	isQuarantine bool) (protodef.MonteCarloSimulationResp, error) {
+	isQuarantine bool,
+	medicalNum int,
+	timeout bool,
+	noSymptomProb float64) (protodef.MonteCarloSimulationResp, error) {
 	baseM, ok := mlist[0]
 	if !ok {
 		baseM = 2.0
@@ -244,7 +273,7 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 		teffect = 1.0
 	}
 
-	people := initInfectedSeed(seedNum, baseM, baseBeta, 0, &pid)
+	people := initInfectedSeed(seedNum, baseM, baseBeta, 0, noSymptomProb, &pid)
 
 	statistics := []protodef.MonteCarloSimulationItem{protodef.MonteCarloSimulationItem{
 		InfectedCount: seedNum,
@@ -273,33 +302,40 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 			TreatmentTime = tm
 		}
 
-		beta, ok := betaList[i]
-		if ok {
+		beta, mok := betaList[i]
+		if mok {
 			baseBeta = beta
 		}
 
-		effect, ok := treatmentEffect[0]
-		if ok {
+		effect, tok := treatmentEffect[0]
+		if tok {
 			teffect = effect
 		}
 
-		shouldDelete := []int64{}
+		//shouldDelete := []int64{}
+		todayTreamenting := statistics[i-1].TreamentingCount
 
+		checkCount := 0
 		for _, p := range people {
-			p.generateM(baseM)
-			p.modifyTreatmentEffect(teffect)
+			if mok {
+				p.generateM(baseM)
+			}
+			if tok {
+				p.modifyTreatmentEffect(teffect)
+			}
 
 			// 开始发病
 			if i-p.InfectStartDay >= p.Te && p.Status == StatusInfected {
 				p.Status = StatusAttacked
 				p.Behavior = BehaviorQuarantine
 				p.AttackedStartDay = i
-			}
-
-			// 发现确诊并治疗
-			if i-p.AttackedStartDay >= p.TreatmentDay && p.Status == StatusAttacked && p.Behavior != BehaviorTreatment {
+			} else if i-p.AttackedStartDay >= p.TreatmentDay && p.Status == StatusAttacked && p.Behavior != BehaviorTreatment {
+				// 发现确诊并治疗
+				if todayTreamenting < medicalNum {
+					p.Behavior = BehaviorTreatment
+					todayTreamenting++
+				}
 				p.ConfirmStartDay = i
-				p.Behavior = BehaviorTreatment
 				stat.ConfirmNew++
 
 				if isQuarantine {
@@ -308,26 +344,24 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 						if _, ok := people[infector]; !ok {
 							continue
 						}
-						if people[infector].PID == infector && people[infector].Behavior != BehaviorTreatment {
+						if people[infector].PID == infector &&
+							people[infector].Behavior != BehaviorTreatment &&
+							people[infector].Behavior != BehaviorQuarantine {
 							people[infector].Behavior = BehaviorQuarantine
 						}
 					}
 				}
-			}
-
-			if p.Behavior == BehaviorFree &&
-				(p.Status == StatusInfected || p.Status == StatusAttacked) {
+			} else if p.Behavior == BehaviorFree &&
+				(p.Status == StatusInfected || p.Status == StatusAttacked || p.Status == StatusNoSymptom) {
 				spreadNum := infectNum(p, i)
 				if spreadNum > 0 {
 					pCount += spreadNum
 					stat.InfectedNew += spreadNum
 
-					new := infectPerson(spreadNum, baseM, baseBeta, i, TreatmentTime, &pid, p)
+					new := infectPerson(spreadNum, baseM, baseBeta, i, TreatmentTime, noSymptomProb, &pid, p)
 					added = append(added, new...)
 				}
-			}
-
-			if p.Behavior == BehaviorTreatment {
+			} else if p.Behavior == BehaviorTreatment {
 				if i-p.ConfirmStartDay >= p.CuredDay {
 					status := p.ChangeStatus()
 					if status == StatusCured {
@@ -337,12 +371,60 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 						stat.DeadNew++
 						DeadPeople[p.PID] = p
 					}
-					shouldDelete = append(shouldDelete, p.PID)
-					continue
+					todayTreamenting--
+					delete(people, p.PID)
+				}
+			} else if p.Behavior != BehaviorTreatment && p.Status == StatusAttacked {
+				if i-p.AttackedStartDay >= p.CuredDay+5 {
+					status := p.ChangeStatus()
+					if status == StatusCured {
+						stat.CureNew++
+						CuredPeople[p.PID] = p
+					} else {
+						stat.DeadNew++
+						DeadPeople[p.PID] = p
+					}
+					delete(people, p.PID)
+				}
+			} else if p.Behavior != BehaviorTreatment && p.Status == StatusNoSymptom {
+				if i-p.InfectStartDay >= p.CuredDay {
+					status := p.ChangeStatus()
+					if status == StatusCured {
+						stat.CureNew++
+						CuredPeople[p.PID] = p
+					} else {
+						stat.DeadNew++
+						DeadPeople[p.PID] = p
+					}
+					delete(people, p.PID)
 				}
 			}
+
 			if p.Status == StatusInfected || p.Status == StatusAttacked {
 				stat.InfectingCount++
+			}
+
+			if p.Status == StatusNoSymptom {
+				stat.NoSymptomCount++
+			}
+
+			if p.Behavior == BehaviorFree {
+				stat.InfectedNotQuarantineCount++
+			}
+
+			if p.Behavior == BehaviorQuarantine {
+				stat.CloserQuarantineCount++
+			}
+
+			if p.Status == StatusAttacked && p.Behavior != BehaviorTreatment {
+				if i-p.AttackedStartDay > 10 {
+					p.incressDeadProp()
+				}
+				stat.AttackedNotTreamenting++
+			}
+
+			if p.ConfirmStartDay > 0 {
+				stat.ConfirmingCount++
 			}
 
 			if p.Behavior == BehaviorTreatment {
@@ -356,12 +438,13 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 		stat.ConfirmCount = statistics[i-1].ConfirmCount + stat.ConfirmNew
 		stat.CureCount = statistics[i-1].CureCount + stat.CureNew
 		stat.DeadCount = statistics[i-1].DeadCount + stat.DeadNew
+		if stat.CureCount == 0 {
+			stat.DeadProb = 0
+		} else {
+			stat.DeadProb = float64(stat.DeadCount) / float64(stat.CureCount)
+		}
 		stat.Date = startDate.Format(util.DateLayout)
 		startDate = startDate.AddDate(0, 0, 1)
-
-		for _, del := range shouldDelete {
-			delete(people, del)
-		}
 
 		for _, add := range added {
 			people[add.PID] = add
@@ -369,10 +452,12 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 
 		statistics = append(statistics, stat)
 		//fmt.Println("累计: ", len(people))
-
-		if len(people) > OneMillion {
-			return resp, errors.New(fmt.Sprintf("在第%d天，%d人同时感染冠状病毒，局势已经失控, 停止仿真计算", i, len(people)))
+		if timeout && checkCount%1000 == 0 {
+			if len(people) > OneMillion {
+				return resp, errors.New(fmt.Sprintf("在第%d天，%d人同时感染冠状病毒，局势已经失控, 停止仿真计算", i, len(people)))
+			}
 		}
+		checkCount++
 	}
 
 	resp.Statistic = statistics
@@ -380,18 +465,18 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 	if isCalSpread {
 		totalPeople := map[int64]*Person{}
 
-		ewlog.Infof("remain infecting: %d", len(people))
+		//ewlog.Infof("remain infecting: %d", len(people))
 		for _, p := range people {
 			totalPeople[p.PID] = p
 		}
 
-		ewlog.Infof("all dead: %d", len(DeadPeople))
+		//ewlog.Infof("all dead: %d", len(DeadPeople))
 
 		for _, p := range DeadPeople {
 			totalPeople[p.PID] = p
 		}
 
-		ewlog.Infof("all cured: %d", len(CuredPeople))
+		//ewlog.Infof("all cured: %d", len(CuredPeople))
 
 		for _, p := range CuredPeople {
 			totalPeople[p.PID] = p
@@ -404,7 +489,7 @@ func Simulate(seedNum, day int, mlist map[int]float64,
 
 		// sort.Sort(PersonSlice(allPeople))
 
-		ewlog.Infof("count %d, totalMap: %d", pCount, len(totalPeople))
+		//ewlog.Infof("count %d, totalMap: %d", pCount, len(totalPeople))
 
 		resp.SpreadTrack = statisticSpreadTrack(&totalPeople)
 	}

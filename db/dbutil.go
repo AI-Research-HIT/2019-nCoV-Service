@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +16,11 @@ import (
 func CalculateDataByDay(provinceName string, city int64) (provinceData protodef.ProvinceData, err error) {
 	result, err := FindAllProvinceData(provinceName)
 	if err != nil {
+		return
+	}
+
+	if len(result) == 0 {
+		err = errors.New("data not found")
 		return
 	}
 

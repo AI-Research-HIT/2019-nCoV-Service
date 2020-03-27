@@ -81,7 +81,7 @@ func ConnectToMongo() {
 
 	go func() {
 		util.Recover()
-		ticker := time.NewTicker(time.Hour * 2)
+		ticker := time.NewTicker(time.Hour * 1)
 
 		for {
 			select {
@@ -212,6 +212,24 @@ func InitAllProvinceData() (err error) {
 	return
 }
 
+func FindAllProvinceOrCountry() ([]string, error) {
+	ctx := context.Background()
+
+	rs, err := dbClient.Database(dbName).Collection(provinceDataCol).Distinct(ctx, "provinceName", bson.M{})
+	if err != nil {
+		ewlog.Error(err)
+		return nil, err
+	}
+
+	all := []string{}
+	for _, s := range rs {
+		str := s.(string)
+		all = append(all, str)
+	}
+
+	return all, err
+}
+
 func fetchLatestProvinceData() (err error) {
 	ctx := context.Background()
 
@@ -245,7 +263,7 @@ func fetchLatestProvinceData() (err error) {
 			}
 		}
 
-		time.Sleep(time.Second * 20)
+		time.Sleep(time.Second * 3)
 	}
 
 	return

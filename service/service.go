@@ -31,6 +31,10 @@ func StartService(ctx context.Context) {
 	apiRouter.HandleFunc("/baidu-incity", BaiduInCityHandler).Methods("GET")
 	apiRouter.HandleFunc("/province-data", AllProvinceDataHandler).Methods("GET")
 	apiRouter.HandleFunc("/simulate", MonteCarloSimulationHandler).Methods("POST")
+	apiRouter.HandleFunc("/allRegionName", GetAllProvinceOrCountryName).Methods("GET")
+	apiRouter.HandleFunc("/regionDailyData", GetProvinceDailyData).Methods("GET")
+	apiRouter.HandleFunc("/countryCompare", CompareCountryTrending).Methods("GET")
+	apiRouter.HandleFunc("/m-simulate", CompareWithDiffMHandler).Methods("POST")
 
 	r.Use(mw.CorsMw)
 	//r.Use(mw.JwtAuthMw)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/ender-wan/ewlog"
@@ -32,6 +33,10 @@ type OverAllT struct {
 	UpdateTime            int64  `json:"updateTime" bson:"updateTime"`
 }
 
+//const host = "https://lab.isaaclin.cn"
+
+const host = "http://47.75.202.128:8888"
+
 func HttpGet(url string) (body []byte, err error) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -50,7 +55,7 @@ func HttpGet(url string) (body []byte, err error) {
 
 // dtypt: 1 最新，0 所有
 func GetOverAll(dtype int) (overall []OverAllT, err error) {
-	url := fmt.Sprintf("https://lab.isaaclin.cn/nCoV/api/overall?latest=%d", dtype)
+	url := fmt.Sprintf(host+"/nCoV/api/overall?latest=%d", dtype)
 
 	body, err := HttpGet(url)
 
@@ -109,7 +114,7 @@ type AllProvinceNameT struct {
 }
 
 func GetProvinceNames() (overall []string, err error) {
-	url := fmt.Sprintf("https://lab.isaaclin.cn/nCoV/api/provinceName")
+	url := fmt.Sprintf(host + "/nCoV/api/provinceName")
 
 	body, err := HttpGet(url)
 
@@ -124,11 +129,15 @@ func GetProvinceNames() (overall []string, err error) {
 
 // dtypt: 1 最新，0 所有
 func GetAllProvinceData(dtype int, province string) (all []ProvinceT, err error) {
-	url := fmt.Sprintf("https://lab.isaaclin.cn/nCoV/api/area?latest=%d&province=%s", dtype, province)
-	ewlog.Info(url)
-	body, err := HttpGet(url)
+	arg := url.QueryEscape(province)
+	uri := fmt.Sprintf(host+"/nCoV/api/area?latest=%d&province=%s", dtype, arg)
+
+	ewlog.Info(uri)
+
+	body, err := HttpGet(uri)
 
 	result := AllProvinceDataT{}
+	ewlog.Info(string(body))
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		ewlog.Error(err)

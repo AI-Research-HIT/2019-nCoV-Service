@@ -90,11 +90,14 @@ type MonteCarloSimulationRequest struct {
 	City               int64           `json:"city"`
 	Province           string          `json:"province"`
 	PredictDay         int             `json:"predictDay"`
+	InitNum            int             `json:"initNum"`
 	BetaList           map[int]float64 `json:"betalist"`
 	Mlist              map[int]float64 `json:"mlist"`
 	TreamentList       map[int]int     `json:"treamentList"`
+	NoSymptomProb      float64         `json:"noSymptomProb"`
 	SimulateNum        int             `json:"simNum"`
 	IsQuarantineCloser bool            `json:"isQuarantineCloser"`
+	MedicalNum         int             `json:"medicalNum"`
 }
 
 type MonteCarloSimulationResp struct {
@@ -103,25 +106,31 @@ type MonteCarloSimulationResp struct {
 }
 
 type MonteCarloSimulationItem struct {
-	InfectedCount    int    `json:"infectedCount"`
-	InfectedMin      int    `json:"infectedMin"`
-	InfectedMax      int    `json:"infectedMax"`
-	InfectedNew      int    `json:"infectedNew"`
-	ConfirmCount     int    `json:"confirmCount"`
-	ConfirmNew       int    `json:"confirmNew"`
-	RealConfirmCount int    `json:"realConfirmCount"`
-	RealConfirmNew   int    `json:"realConfirmNew"`
-	DeadCount        int    `json:"deadCount"`
-	DeadNew          int    `json:"deadNew"`
-	RealDeadCount    int    `json:"realDeadCount"`
-	RealDeadNew      int    `json:"realDeadNew"`
-	CureCount        int    `json:"cureCount"`
-	CureNew          int    `json:"cureNew"`
-	RealCureCount    int    `json:"realCureCount"`
-	RealCureNew      int    `json:"realCureNew"`
-	Date             string `json:"date"`
-	InfectingCount   int    `json:"infectingCount"`
-	TreamentingCount int    `json:"treamentingCount"`
+	InfectedCount              int     `json:"infectedCount"`
+	InfectedMin                int     `json:"infectedMin"`
+	InfectedMax                int     `json:"infectedMax"`
+	InfectedNew                int     `json:"infectedNew"`
+	ConfirmCount               int     `json:"confirmCount"`
+	ConfirmNew                 int     `json:"confirmNew"`
+	RealConfirmCount           int     `json:"realConfirmCount"`
+	RealConfirmNew             int     `json:"realConfirmNew"`
+	DeadCount                  int     `json:"deadCount"`
+	DeadNew                    int     `json:"deadNew"`
+	RealDeadCount              int     `json:"realDeadCount"`
+	RealDeadNew                int     `json:"realDeadNew"`
+	CureCount                  int     `json:"cureCount"`
+	CureNew                    int     `json:"cureNew"`
+	RealCureCount              int     `json:"realCureCount"`
+	RealCureNew                int     `json:"realCureNew"`
+	Date                       string  `json:"date"`
+	InfectingCount             int     `json:"infectingCount"`
+	NoSymptomCount             int     `json:"noSymptomCount"`
+	TreamentingCount           int     `json:"treamentingCount"`
+	InfectedNotQuarantineCount int     `json:"infectedNotQuarantineCount"`
+	CloserQuarantineCount      int     `json:"closerQuarantineCount"`
+	AttackedNotTreamenting     int     `json:"attackedNotTreamenting"`
+	ConfirmingCount            int     `json:"confirmingCount"`
+	DeadProb                   float64 `json:"deadProb"`
 }
 
 type SpreadTrackResponse struct {
@@ -144,4 +153,10 @@ type SpreadLink struct {
 
 type SpreadCategory struct {
 	Name string `json:"name"`
+}
+
+type CompareCountryResp struct {
+	Countrys []string       `json:"countrys"`
+	Data     []ProvinceData `json:"data"`
+	Max      int            `json:"max"`
 }

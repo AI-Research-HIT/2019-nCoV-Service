@@ -56,7 +56,7 @@ func LatestDataHandler(w http.ResponseWriter, r *http.Request) {
 	now := util.TodayStartTime()
 	rs, err := db.FindLatestOverallData()
 	if err != nil || rs.UpdateTime < now.Unix()*1000 {
-		ewlog.Error(err)
+		ewlog.Errorf("not find in db %v", err)
 
 		all, err := cli.GetOverAll(1)
 		if err != nil || len(all) == 0 {
@@ -184,21 +184,22 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ewlog.Infof("%+v", request)
 
-	province, err := db.CalculateDataByDay(request.Province, request.City)
+	// province, err := db.CalculateDataByDay(request.Province, request.City)
 
-	if len(province.Detail) == 0 {
-		ewlog.Warn("请求的城市没有初始数据")
-		resputil.WriteFailed(w, 101, "请求的城市没有初始数据")
-		return
-	}
+	// if len(province.Detail) == 0 {
+	// 	ewlog.Warn("请求的城市没有初始数据")
+	// 	resputil.WriteFailed(w, 101, "请求的城市没有初始数据")
+	// 	return
+	// }
 
-	DayOne := province.Detail[0]
-	startDate, err := time.Parse(util.DateLayout, DayOne.Date)
-	if err != nil {
-		ewlog.Error(err)
-		resputil.WriteFailed(w, 103, "internal error")
-		return
-	}
+	// DayOne := province.Detail[0]
+	// startDate, err := time.Parse(util.DateLayout, DayOne.Date)
+	// if err != nil {
+	// 	ewlog.Error(err)
+	// 	resputil.WriteFailed(w, 103, "internal error")
+	// 	return
+	// }
+	startDate := time.Now()
 
 	allResult := []protodef.MonteCarloSimulationResp{}
 
@@ -215,44 +216,59 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 
 	var countTime int64 = 0
 
+	errCount := 0
+
 	for i := 0; i < calNum; i++ {
+		if errCount > 3 {
+			err = errors.New("该参数计算时间太长，疫情已经发展到超出30万人同时感染，取消计算, 请重新调整参数")
+			ewlog.Error(err)
+			resputil.WriteFailed(w, 103, err.Error())
+			return
+		}
 		if i != 0 {
 			isCalSpread = false
 		}
 		startT := time.Now()
 
-		result, err := model.Simulate(DayOne.TotalInfection, request.PredictDay, request.Mlist, request.BetaList,
-			request.TreamentList, treatmentEffect, startDate, isCalSpread, request.IsQuarantineCloser)
+		result, err := model.Simulate(request.InitNum, request.PredictDay, request.Mlist, request.BetaList,
+			request.TreamentList, treatmentEffect, startDate, isCalSpread, request.IsQuarantineCloser,
+			request.MedicalNum, true, request.NoSymptomProb)
 
 		endT := time.Now()
 
 		countTime += endT.UnixNano() - startT.UnixNano()
 		if err != nil {
 			ewlog.Error(err)
+			errCount++
 			//resputil.WriteFailed(w, 102, err.Error())
 			continue
 		}
-		if countTime > int64(time.Second*10) {
-			err = errors.New("该参数计算时间太长，取消计算")
-			ewlog.Error(err)
-			resputil.WriteFailed(w, 103, err.Error())
-			return
-		}
+
 		allResult = append(allResult, result)
+		if countTime > int64(time.Second*8) {
+			break
+		}
 	}
 
 	ewlog.Infof("平局每次模拟时间%dms", countTime/int64(calNum)/int64(time.Millisecond))
-
+	if len(allResult) == 0 {
+		err = errors.New("该参数计算时间太长，疫情已经发展到超出30万人同时感染，取消计算, 请重新调整参数")
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 103, err.Error())
+		return
+	}
 	result := protodef.MonteCarloSimulationResp{
 		SpreadTrack: allResult[0].SpreadTrack,
 		Statistic:   []protodef.MonteCarloSimulationItem{},
 	}
 
+	calNum = len(allResult)
+
 	if len(result.SpreadTrack.Nodes) > 500 {
 		result.SpreadTrack = protodef.SpreadTrackResponse{}
 	}
 
-	for i := 0; i < len(allResult[0].Statistic); i++ {
+	for i := 0; i < len(allResult[0].Statistic)-1; i++ {
 		InfectedCount := 0
 		InfectedNew := 0
 		ConfirmCount := 0
@@ -263,8 +279,14 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 		DeadNew := 0
 		InfectingCount := 0
 		TreamentingCount := 0
+		InfectedNotQuarantineCount := 0
+		CloserQuarantineCount := 0
 		InfectedMin := 0
 		InfectedMax := 0
+		AttackedNotTreamenting := 0
+		DeadProb := 0.0
+		ConfirmingCount := 0
+		NoSymptomCount := 0
 		for j := 0; j < len(allResult); j++ {
 			count := allResult[j].Statistic[i].InfectedCount
 			if j == 0 {
@@ -288,43 +310,291 @@ func MonteCarloSimulationHandler(w http.ResponseWriter, r *http.Request) {
 			DeadNew += allResult[j].Statistic[i].DeadNew
 			InfectingCount += allResult[j].Statistic[i].InfectingCount
 			TreamentingCount += allResult[j].Statistic[i].TreamentingCount
+			InfectedNotQuarantineCount += allResult[j].Statistic[i].InfectedNotQuarantineCount
+			CloserQuarantineCount += allResult[j].Statistic[i].CloserQuarantineCount
+			AttackedNotTreamenting += allResult[j].Statistic[i].AttackedNotTreamenting
+			DeadProb += allResult[j].Statistic[i].DeadProb
+			ConfirmingCount += allResult[j].Statistic[i].ConfirmingCount
+			NoSymptomCount += allResult[j].Statistic[i].NoSymptomCount
 		}
 
 		count := InfectedCount / calNum
-		min := count - (count-InfectedMin)/3
-		max := (InfectedMax-count)/3 + count
+		min := count - (count-InfectedMin)/5
+		max := (InfectedMax-count)/10 + count
 
 		s := protodef.MonteCarloSimulationItem{
-			InfectedCount:    count,
-			ConfirmCount:     ConfirmCount / calNum,
-			CureCount:        CureCount / calNum,
-			DeadCount:        DeadCount / calNum,
-			InfectedNew:      InfectedNew / calNum,
-			ConfirmNew:       ConfirmNew / calNum,
-			CureNew:          CureNew / calNum,
-			DeadNew:          DeadNew / calNum,
-			InfectingCount:   InfectingCount / calNum,
-			TreamentingCount: TreamentingCount / calNum,
-			InfectedMin:      min,
-			InfectedMax:      max - min,
-			Date:             allResult[0].Statistic[i].Date,
+			InfectedCount:              count,
+			ConfirmCount:               ConfirmCount / calNum,
+			CureCount:                  CureCount / calNum,
+			DeadCount:                  DeadCount / calNum,
+			InfectedNew:                InfectedNew / calNum,
+			ConfirmNew:                 ConfirmNew / calNum,
+			CureNew:                    CureNew / calNum,
+			DeadNew:                    DeadNew / calNum,
+			InfectingCount:             InfectingCount / calNum,
+			TreamentingCount:           TreamentingCount / calNum,
+			InfectedNotQuarantineCount: InfectedNotQuarantineCount / calNum,
+			CloserQuarantineCount:      CloserQuarantineCount / calNum,
+			InfectedMin:                min,
+			InfectedMax:                max - min,
+			AttackedNotTreamenting:     AttackedNotTreamenting / calNum,
+			DeadProb:                   DeadProb / float64(calNum),
+			Date:                       allResult[0].Statistic[i].Date,
+			ConfirmingCount:            ConfirmingCount / calNum,
+			NoSymptomCount:             NoSymptomCount / calNum,
 		}
 		result.Statistic = append(result.Statistic, s)
-
 	}
 
-	for i := range result.Statistic {
-		if i == len(province.Detail) {
-			break
-		}
+	// for i := range result.Statistic {
+	// 	if i == len(province.Detail) {
+	// 		break
+	// 	}
 
-		result.Statistic[i].RealConfirmCount = province.Detail[i].TotalInfection
-		result.Statistic[i].RealConfirmNew = province.Detail[i].NewInfection
-		result.Statistic[i].RealCureCount = province.Detail[i].TotalCure
-		result.Statistic[i].RealCureNew = province.Detail[i].NewCure
-		result.Statistic[i].RealDeadCount = province.Detail[i].TotalDeath
-		result.Statistic[i].RealDeadNew = province.Detail[i].NewDeath
-	}
+	// 	result.Statistic[i].RealConfirmCount = province.Detail[i].TotalInfection
+	// 	result.Statistic[i].RealConfirmNew = province.Detail[i].NewInfection
+	// 	result.Statistic[i].RealCureCount = province.Detail[i].TotalCure
+	// 	result.Statistic[i].RealCureNew = province.Detail[i].NewCure
+	// 	result.Statistic[i].RealDeadCount = province.Detail[i].TotalDeath
+	// 	result.Statistic[i].RealDeadNew = province.Detail[i].NewDeath
+	// }
 
 	resputil.WriteSuccessWithData(w, result)
+}
+
+func GetAllProvinceOrCountryName(w http.ResponseWriter, r *http.Request) {
+	rs, err := db.FindAllProvinceOrCountry()
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 500, "internal error")
+	}
+
+	resputil.WriteSuccessWithData(w, rs)
+}
+
+func GetProvinceDailyData(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	country := r.FormValue("region")
+
+	if len(country) == 0 {
+		resputil.WriteFailed(w, 100, "没有指定地区名")
+		return
+	}
+
+	province, err := db.CalculateDataByDay(country, 0)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 101, "没有该地区数据")
+		return
+	}
+
+	resputil.WriteSuccessWithData(w, province)
+}
+
+func CompareCountryTrending(w http.ResponseWriter, r *http.Request) {
+	countrys := []string{
+		"湖北省",
+		"美国",
+		"意大利",
+		"伊朗",
+		"英国",
+		"德国",
+		"日本",
+		"韩国",
+		"新加坡",
+		"西班牙",
+		"法国",
+	}
+
+	countryData := []protodef.ProvinceData{}
+
+	for _, c := range countrys {
+		data, err := db.CalculateDataByDay(c, 0)
+		if err != nil {
+			ewlog.Error(err)
+			continue
+		}
+		countryData = append(countryData, data)
+	}
+
+	result := []protodef.ProvinceData{}
+	max := 0
+	for _, c := range countryData {
+		p := protodef.ProvinceData{
+			ProvinceName: c.ProvinceName,
+			Detail:       []protodef.DetailData{},
+		}
+		for _, d := range c.Detail {
+			if d.TotalInfection > 100 {
+				p.Detail = append(p.Detail, d)
+			}
+		}
+
+		if len(p.Detail) > max {
+			max = len(p.Detail)
+		}
+
+		result = append(result, p)
+	}
+
+	resp := protodef.CompareCountryResp{
+		Countrys: countrys,
+		Data:     result,
+		Max:      max,
+	}
+
+	resputil.WriteSuccessWithData(w, resp)
+}
+
+type MResultT struct {
+	M      int
+	Result []float64
+}
+
+func CompareWithDiffMHandler(w http.ResponseWriter, r *http.Request) {
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 100, err.Error())
+		return
+	}
+
+	defer r.Body.Close()
+
+	request := &protodef.MonteCarloSimulationRequest{}
+	err = json.Unmarshal(data, request)
+	if err != nil {
+		ewlog.Error(err)
+		resputil.WriteFailed(w, 101, "无效的请求数据")
+		return
+	}
+	ewlog.Infof("%+v", request)
+
+	// province, err := db.CalculateDataByDay(request.Province, request.City)
+
+	// if len(province.Detail) == 0 {
+	// 	ewlog.Warn("请求的城市没有初始数据")
+	// 	resputil.WriteFailed(w, 101, "请求的城市没有初始数据")
+	// 	return
+	// }
+
+	// DayOne := province.Detail[0]
+	// startDate, err := time.Parse(util.DateLayout, DayOne.Date)
+	// if err != nil {
+	// 	ewlog.Error(err)
+	// 	resputil.WriteFailed(w, 103, "internal error")
+	// 	return
+	// }
+	startDate := time.Now()
+
+	calNum := 20
+
+	if request.SimulateNum > 0 {
+		calNum = request.SimulateNum
+	}
+
+	treatmentEffect := map[int]float64{
+		0: 1.0,
+	}
+
+	var countTime int64 = 0
+
+	errCount := 0
+
+	mlist := []map[int]float64{}
+	for i := 5; i <= 20; i++ {
+		mlist = append(mlist, map[int]float64{0: float64(i)})
+	}
+
+	mresult := map[int]MResultT{}
+	fresult := [][]float64{}
+
+	initNumList := []int{1, 2, 4, 8, 16}
+	//rsCh := make(chan MResultT, 15)
+
+	for _, m := range mlist {
+		tmpM := m
+		tmpR := []float64{}
+		//go func() {
+		ewlog.Infof("Start: %v", tmpM)
+		for _, num := range initNumList {
+
+			allResult := []protodef.MonteCarloSimulationResp{}
+
+			for i := 0; i < calNum; i++ {
+				//ewlog.Infof("%v calNum: %d", tmpM, i)
+
+				startT := time.Now()
+
+				result, err := model.Simulate(num, request.PredictDay, tmpM, request.BetaList,
+					request.TreamentList, treatmentEffect, startDate, false, request.IsQuarantineCloser,
+					request.MedicalNum, true, request.NoSymptomProb)
+
+				endT := time.Now()
+
+				countTime += endT.UnixNano() - startT.UnixNano()
+				if err != nil {
+					//ewlog.Error(err)
+					errCount++
+					//resputil.WriteFailed(w, 102, err.Error())
+					continue
+				}
+
+				allResult = append(allResult, result)
+			}
+
+			ewlog.Infof("%v, 平均每次模拟时间%dms", tmpM, countTime/int64(calNum)/int64(time.Millisecond))
+			// if len(allResult) == 0 {
+			// 	err = errors.New("该参数计算时间太长，疫情已经发展到超出30万人同时感染，取消计算, 请重新调整参数")
+			// 	ewlog.Error(err)
+			// 	resputil.WriteFailed(w, 103, err.Error())
+			// 	return
+			// }
+			count := 0
+			for _, s := range allResult {
+				if s.Statistic[len(s.Statistic)-1].ConfirmNew == 0 {
+					count++
+				}
+			}
+			ewlog.Infof("%v 初始感染人数: %d 0百分比: %d", m, num, count)
+			tmpR = append(tmpR, float64(count)/10.0)
+		}
+		mrs := MResultT{
+			M:      int(tmpM[0]),
+			Result: tmpR,
+		}
+		//rsCh <- mrs
+		//}()
+		mresult[mrs.M] = mrs
+	}
+	// count := 0
+	// for i := range rsCh {
+	// 	fmt.Printf("receiver get %+v\n", i)
+	// 	mresult[i.M] = i
+	// 	count++
+	// 	if count >= 15 {
+	// 		// signal recving finish
+	// 		break
+	// 	}
+	// }
+
+	for i := 5; i <= 20; i++ {
+		re := mresult[i]
+		fresult = append(fresult, re.Result)
+	}
+
+	// for i := range result.Statistic {
+	// 	if i == len(province.Detail) {
+	// 		break
+	// 	}
+
+	// 	result.Statistic[i].RealConfirmCount = province.Detail[i].TotalInfection
+	// 	result.Statistic[i].RealConfirmNew = province.Detail[i].NewInfection
+	// 	result.Statistic[i].RealCureCount = province.Detail[i].TotalCure
+	// 	result.Statistic[i].RealCureNew = province.Detail[i].NewCure
+	// 	result.Statistic[i].RealDeadCount = province.Detail[i].TotalDeath
+	// 	result.Statistic[i].RealDeadNew = province.Detail[i].NewDeath
+	// }
+
+	resputil.WriteSuccessWithData(w, fresult)
 }
